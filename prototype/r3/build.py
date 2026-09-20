@@ -24,8 +24,10 @@ def main():
                     str(HERE / "MANIFEST.MF"), "-C", str(classes), "rgds"], check=True)
     test_cp = cp + ";" + str(classes)
     subprocess.run([str(JDK / "javac.exe"), "--release", "11", "-cp", test_cp,
-                    "-d", str(classes), str(HERE / "TransformTest.java")], check=True)
+                    "-d", str(classes), str(HERE / "TransformTest.java"),
+                    str(HERE / "UiTransformTest.java")], check=True)
     subprocess.run([str(JDK / "java.exe"), "-cp", test_cp, "TransformTest", str(GAME)], check=True)
+    subprocess.run([str(JDK / "java.exe"), "-cp", test_cp, "UiTransformTest"], check=True)
     subprocess.run(["wsl", "-e", "aarch64-linux-gnu-gcc", "-shared", "-fPIC", "-O2",
                     "-Wall", "-Wextra", "-Werror", "-o",
                     "/mnt/d/Works/Slay the Spire for RGDSplus/prototype/r3/build/librgds-dual.so",

@@ -17,17 +17,30 @@ public final class DualAgent {
             public byte[] transform(ClassLoader loader, String name, Class<?> cls,
                                     ProtectionDomain domain, byte[] bytes) {
                 if (!name.startsWith(CORE) &&
-                    !name.equals("com/badlogic/gdx/backends/lwjgl/LwjglApplicationConfiguration"))
+                    !name.equals("com/badlogic/gdx/backends/lwjgl/LwjglApplicationConfiguration") &&
+                    !name.equals("com/badlogic/gdx/graphics/g2d/SpriteBatch"))
                     return null;
                 String simple = name.substring(name.lastIndexOf('/') + 1);
                 if (!java.util.Arrays.asList("CardCrawlGame", "AbstractDungeon", "AbstractPlayer",
-                        "MainMenuScreen", "LwjglApplicationConfiguration").contains(simple)) return null;
+                        "MainMenuScreen", "LwjglApplicationConfiguration", "OverlayMenu",
+                        "AbstractMonster", "AbstractCreature", "Hitbox", "SpriteBatch").contains(simple)) return null;
                 CtClass target = null;
                 try {
                     ClassPool pool = new ClassPool(true);
                     pool.insertClassPath(new LoaderClassPath(loader));
                     target = pool.makeClass(new ByteArrayInputStream(bytes));
-                    if (simple.equals("LwjglApplicationConfiguration")) {
+                    if (simple.equals("SpriteBatch")) {
+                        target.getDeclaredMethod("flush").instrument(new ExprEditor() {
+                            public void edit(MethodCall c) throws CannotCompileException {
+                                if (c.getClassName().equals("com.badlogic.gdx.graphics.Mesh") &&
+                                        c.getMethodName().equals("render"))
+                                    c.replace("{ $proceed($$); if (rgds.r3.DualRender.mirrorBatch()) {"
+                                        + "rgds.r3.DualRender.lowerBackgroundViewport();"
+                                        + "try { $proceed($$); } finally {"
+                                        + "rgds.r3.DualRender.restoreBackgroundViewport(); } } }");
+                            }
+                        });
+                    } else if (simple.equals("LwjglApplicationConfiguration")) {
                         target.makeClassInitializer().insertAfter("disableAudio = true;");
                     } else if (simple.equals("CardCrawlGame")) {
                         CtMethod render = target.getDeclaredMethod("render");
@@ -55,7 +68,11 @@ public final class DualAgent {
                         target.getDeclaredMethod("render").instrument(new ExprEditor() {
                             public void edit(MethodCall c) throws CannotCompileException {
                                 String owner = c.getClassName(), method = c.getMethodName();
-                                if (method.equals("renderCombatRoomFg")) {
+                                if (method.equals("renderCombatRoomBg")) {
+                                    c.replace("{ rgds.r3.DualRender.beginBackground($1);"
+                                        + "try { $proceed($$); } finally {"
+                                        + "rgds.r3.DualRender.endBackground($1); } }");
+                                } else if (method.equals("renderCombatRoomFg")) {
                                     route(c, 1, false);
                                 } else if (method.equals("renderBlackScreen")) {
                                     c.replace("{ $proceed($$); rgds.r3.DualRender.push($1, 1, false);"
@@ -68,6 +85,31 @@ public final class DualAgent {
                                 }
                             }
                         });
+                    } else if (simple.equals("Hitbox")) {
+                        target.getDeclaredMethod("update", new CtClass[0]).insertBefore(
+                                "rgds.r3.DualRender.pointerBegin(this);");
+                        target.getDeclaredMethod("update", new CtClass[0]).insertAfter(
+                                "rgds.r3.DualRender.pointerEnd();", true);
+                    } else if (simple.equals("OverlayMenu")) {
+                        target.getDeclaredMethod("render").instrument(new ExprEditor() {
+                            public void edit(MethodCall c) throws CannotCompileException {
+                                if (!c.getMethodName().equals("render")) return;
+                                String owner = c.getClassName(), kind = null;
+                                if (owner.endsWith(".EnergyPanel")) kind = "energy";
+                                if (owner.endsWith(".EndTurnButton")) kind = "end";
+                                if (owner.endsWith(".DrawPilePanel")) kind = "draw";
+                                if (owner.endsWith(".DiscardPilePanel")) kind = "discard";
+                                if (kind != null)
+                                    c.replace("{ rgds.r3.DualRender.pushControl($1,$0,\"" + kind + "\");"
+                                        + "try { $proceed($$); } finally { rgds.r3.DualRender.pop($1); } }");
+                            }
+                        });
+                    } else if (simple.equals("AbstractCreature")) {
+                        info(target.getDeclaredMethod("renderHealth"), "health");
+                    } else if (simple.equals("AbstractMonster")) {
+                        for (String method : new String[]{"renderIntent", "renderDamageRange",
+                                "renderIntentVfxBehind", "renderIntentVfxAfter"})
+                            info(target.getDeclaredMethod(method), "intent");
                     } else if (simple.equals("AbstractPlayer")) {
                         target.getDeclaredMethod("renderHand").insertBefore(
                                 "rgds.r3.DualRender.push($1, 1, true);");
@@ -101,6 +143,11 @@ public final class DualAgent {
                 }
             }
         });
+    }
+
+    private static void info(CtMethod method, String kind) throws CannotCompileException {
+        method.insertBefore("rgds.r3.DualRender.pushInfo($1,this,\"" + kind + "\");");
+        method.insertAfter("rgds.r3.DualRender.pop($1);", true);
     }
 
     private static void route(MethodCall call, int screen, boolean hand) throws CannotCompileException {

@@ -20,6 +20,7 @@ runtime, audio, saves, and scene transitions have been verified.
 - [R2 output and touch accuracy verification (Chinese)](docs/R2_TOUCH_PROBE.zh-CN.md)
 - [R3 native dual-screen UI and device screenshots (Chinese)](docs/R3_NATIVE_UI.zh-CN.md)
 - [Frozen R3 baseline and non-destructive rollback (Chinese)](docs/R3_BASELINE_20260920.zh-CN.md)
+- [R3 complete backgrounds and small-screen revision (Chinese)](docs/R3_SMALL_SCREEN.zh-CN.md)
 - [Physically verified touch integration contract (Chinese)](docs/RGDSPLUS_TOUCH_CONTRACT.zh-CN.md)
 
 The user confirmed single-screen stability on September 20, 2026 and authorized

@@ -140,7 +140,7 @@ print('Private R3 clone ready; production saves never copied')
                 write(APP + "/" + name, data)
                 hashes[name] = hashlib.sha256(data).hexdigest()
             write("/mnt/sdcard/Ports/" + ENTRY, (HERE/ENTRY).read_bytes())
-            write(APP+"/r3-manifest.json", json.dumps(dict(build="r3-native-ui-20260920-3",
+            write(APP+"/r3-manifest.json", json.dumps(dict(build="r3-small-screen-20260920-3",
                   files=hashes, game_assets_in_adapter=False, touch_policy="capture-only")).encode())
             print(shell(f"chmod +x {APP}/game-launch.sh {APP}/run-java.sh {APP}/patch_safe.sh " +
                         shlex.quote("/mnt/sdcard/Ports/" + ENTRY)))
