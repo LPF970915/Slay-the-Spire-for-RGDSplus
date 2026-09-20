@@ -22,6 +22,8 @@ runtime, audio, saves, and scene transitions have been verified.
 - [Frozen R3 baseline and non-destructive rollback (Chinese)](docs/R3_BASELINE_20260920.zh-CN.md)
 - [R3 complete backgrounds and small-screen revision (Chinese)](docs/R3_SMALL_SCREEN.zh-CN.md)
 - [R3 30 FPS profiling and remaining transition stalls (Chinese)](docs/R3_PERFORMANCE.zh-CN.md)
+- [R4 all-page routing, isolated entry and per-page layout checklist (Chinese)](docs/R4_ALL_PAGES.zh-CN.md)
+- [R4 user layout revision: continuous tower/map and curved targeting (Chinese)](docs/R4_LAYOUT_REVISION.zh-CN.md)
 - [Physically verified touch integration contract (Chinese)](docs/RGDSPLUS_TOUCH_CONTRACT.zh-CN.md)
 
 The user confirmed single-screen stability on September 20, 2026 and authorized

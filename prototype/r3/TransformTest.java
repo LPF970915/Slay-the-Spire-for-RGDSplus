@@ -31,13 +31,50 @@ public final class TransformTest {
             "com/badlogic/gdx/graphics/g2d/SpriteBatch",
             "com/badlogic/gdx/backends/lwjgl/LwjglApplicationConfiguration"
         };
+        java.util.Set<String> inventory = new java.util.LinkedHashSet<String>(java.util.Arrays.asList(names));
+        inventory.add("com/megacrit/cardcrawl/screens/charSelect/CharacterOption");
+        inventory.add("com/megacrit/cardcrawl/rooms/EventRoom");
+        inventory.add("com/megacrit/cardcrawl/scenes/TitleBackground");
+        inventory.add("com/megacrit/cardcrawl/map/DungeonMap");
+        inventory.add("com/megacrit/cardcrawl/vfx/MapCircleEffect");
+        for (String control : rgds.r3.DualAgent.SMALL_CONTROLS) {
+            String prefix = control.startsWith("Menu") ? "screens/mainMenu/" : "ui/buttons/";
+            inventory.add("com/megacrit/cardcrawl/" + prefix + control);
+        }
+        ClassPool pool = new ClassPool(true);
+        pool.insertClassPath(args[0]);
+        checkStates(pool, "com.megacrit.cardcrawl.dungeons.AbstractDungeon$CurrentScreen",
+                rgds.r3.ScreenRoutes.DUNGEON);
+        checkStates(pool, "com.megacrit.cardcrawl.screens.mainMenu.MainMenuScreen$CurScreen",
+                rgds.r3.ScreenRoutes.MENU);
+        if (!rgds.r3.ScreenRoutes.dungeonId("CHOOSE_ONE", "MonsterRoom").equals("U16") ||
+                !rgds.r3.ScreenRoutes.dungeonId("UNRECOGNIZED", "MonsterRoom").equals("U33") ||
+                rgds.r3.ScreenRoutes.knownRoom("ModRoom"))
+            throw new AssertionError("Choice/fallback policy");
+        for (java.util.Map<String,String> routes : java.util.Arrays.asList(
+                rgds.r3.ScreenRoutes.LOWER, rgds.r3.ScreenRoutes.MIRROR, rgds.r3.ScreenRoutes.UPPER))
+            for (String name : routes.keySet()) inventory.add(name.replace('.', '/'));
         try (ZipFile game = new ZipFile(args[0])) {
-            for (String name : names) {
+            for (String name : inventory) {
                 byte[] input = game.getInputStream(game.getEntry(name + ".class")).readAllBytes();
                 byte[] output = transformer[0].transform(TransformTest.class.getClassLoader(),
                         name, null, null, input);
                 if (output == null || java.util.Arrays.equals(input, output))
                     throw new AssertionError("No routing inserted for " + name);
+                if (rgds.r3.ScreenRoutes.id(name.replace('/', '.')) != null) {
+                    CtClass page = pool.makeClass(new ByteArrayInputStream(output));
+                    final int[] enter = new int[1], exit = new int[1];
+                    page.getDeclaredMethod("render").instrument(new ExprEditor() {
+                        public void edit(MethodCall c) {
+                            if (!c.getClassName().equals("rgds.r3.DualRender")) return;
+                            if (c.getMethodName().equals("page")) enter[0]++;
+                            if (c.getMethodName().equals("endPage")) exit[0]++;
+                        }
+                    });
+                    page.detach();
+                    if (enter[0] != 1 || exit[0] < 1)
+                        throw new AssertionError("Page scope missing " + name);
+                }
                 if (name.endsWith("/SpriteBatch")) {
                     CtClass batch = new ClassPool(true).makeClass(new ByteArrayInputStream(output));
                     final int[] calls = new int[1];
@@ -52,6 +89,16 @@ public final class TransformTest {
                 }
             }
         }
-        System.out.println("R3 ten native class transformations passed");
+        System.out.println("Native class transformations passed: " + inventory.size());
+    }
+
+    private static void checkStates(ClassPool pool, String type, java.util.Map<String, String> policy)
+            throws Exception {
+        java.util.Set<String> actual = new java.util.TreeSet<String>();
+        for (javassist.CtField field : pool.get(type).getDeclaredFields())
+            if ((field.getModifiers() & javassist.bytecode.AccessFlag.ENUM) != 0)
+                actual.add(field.getName());
+        if (!actual.equals(policy.keySet())) throw new AssertionError("Uncovered state " + type);
+        System.out.println("Native enum coverage passed: " + type + " " + actual.size());
     }
 }

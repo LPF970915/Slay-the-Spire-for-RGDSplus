@@ -38,7 +38,8 @@ def main():
     assert "projectedMatrix.set(baseProjection).mul(transform)" in renderer
     assert "glCopyTexSubImage2D" not in renderer
     assert "new Texture(" not in renderer
-    assert "backgroundPass = active && splitDungeon && screen == 0" in renderer
+    assert "backgroundPass = active;" in renderer
+    assert "backgroundPass = state.mirror;" in renderer
     assert "layout.inverseX(InputHelper.mX)" in renderer
     assert "!Settings.isControllerMode" in renderer
     agent = (HERE/"java/rgds/r3/DualAgent.java").read_text()

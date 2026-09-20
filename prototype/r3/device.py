@@ -16,8 +16,6 @@ from launch_profile import configure
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = ROOT / "prototype/r3"
-APP = "/mnt/sdcard/Ports/SlayTheSpireDualR3"
-ENTRY = "Slay the Spire R3 Native UI.sh"
 KEYS = {"a": (1,304,1), "b": (1,305,1), "x": (1,307,1), "y": (1,306,1),
         "l": (1,308,1), "r": (1,309,1), "select": (1,310,1), "start": (1,311,1),
         "l2": (1,314,1), "r2": (1,315,1), "left": (3,16,-1), "right": (3,16,1),
@@ -27,7 +25,12 @@ KEYS = {"a": (1,304,1), "b": (1,305,1), "x": (1,307,1), "y": (1,306,1),
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=("deploy", "run", "status", "key", "shot", "stop",
-                                          "logs", "audit", "touch-probe", "perf"))
+                                          "logs", "audit", "touch-probe", "perf", "page"))
+    parser.add_argument("--variant", choices=("r3", "r4"), default="r3")
+    parser.add_argument("--page-probe", action="store_true")
+    parser.add_argument("--page", choices=("cards", "relics", "potions", "stats", "history",
+                                         "custom", "character", "inputs", "patch", "credits",
+                                         "map", "deck", "settings"))
     parser.add_argument("--seconds", type=int, default=1200)
     parser.add_argument("--fps", type=int, choices=(24, 30, 60), default=30)
     parser.add_argument("--heap-mb", type=int, choices=(128, 140, 160, 180), default=140)
@@ -38,6 +41,12 @@ def main():
     parser.add_argument("--hold-seconds", type=float, default=.12)
     parser.add_argument("--name", default="native-ui")
     args = parser.parse_args()
+    APP = "/mnt/sdcard/Ports/SlayTheSpireDual" + args.variant.upper()
+    ENTRY = "Slay the Spire R4 All Pages.sh" if args.variant == "r4" else "Slay the Spire R3 Native UI.sh"
+    if (args.page_probe or args.action == "page") and args.variant != "r4":
+        parser.error("Gallery probe is restricted to the separate R4 clone")
+    if args.action == "page" and not args.page:
+        parser.error("--page is required")
     if not .05 <= args.hold_seconds <= 3:
         parser.error("Hold must be between .05 and 3 seconds")
     if args.hold_seconds > .5 and args.keys != ["select"]:
@@ -48,7 +57,7 @@ def main():
     client.connect("192.168.31.116", username="root", password=os.environ["RGDSPLUS_SSH_PASSWORD"],
                    timeout=12, look_for_keys=False, allow_agent=False)
     sftp = client.open_sftp()
-    output = ROOT / "validation/r3-native-ui"
+    output = ROOT / ("validation/r4-all-pages" if args.variant == "r4" else "validation/r3-native-ui")
     output.mkdir(parents=True, exist_ok=True)
     def shell(command, timeout=60):
         _, out, err = client.exec_command(command, timeout=timeout)
@@ -115,7 +124,7 @@ for p in Path('/proc').glob('[0-9]*/cmdline'):
         assert str(app/'supervisor.py').encode() not in parts, 'R3 active'
         assert b'java' != Path(parts[0].decode(errors='replace')).name.encode(), 'Close game'
     except (FileNotFoundError, IndexError): pass
-source = Path('/tmp/rgds-sts-silent-01')
+source = Path({'/mnt/sdcard/Ports/SlayTheSpireDualR3' if args.variant == 'r4' else '/tmp/rgds-sts-silent-01'!r})
 assert source.resolve() == source and (source/'saves/IRONCLAD.autosave').is_file()
 app.mkdir(exist_ok=True)
 (app/'logs').mkdir(exist_ok=True)
@@ -131,7 +140,7 @@ for relative in ('cache/builds/'+build, 'cache/texcache', 'betaPreferences', 'sa
     dest = app/relative
     if not dest.exists():
         shutil.copytree(source/relative, dest, ignore=shutil.ignore_patterns('pulse'))
-print('Private R3 clone ready; production saves never copied')
+print('Private test clone ready; existing saves never overwritten')
 """, 240))
             launch = configure((ROOT / "packaging/launch.sh").read_text())
             write(APP + "/game-launch.sh", launch.encode())
@@ -154,7 +163,7 @@ print('Private R3 clone ready; production saves never copied')
                 write(APP + "/" + name, data)
                 hashes[name] = hashlib.sha256(data).hexdigest()
             write("/mnt/sdcard/Ports/" + ENTRY, (HERE/ENTRY).read_bytes())
-            write(APP+"/r3-manifest.json", json.dumps(dict(build="r3-perf30-20260920-1",
+            write(APP+"/r3-manifest.json", json.dumps(dict(build="r4-layout-20260920-4",
                   renderer_base="r3-small-screen-20260920-3",
                   default_profile=dict(fps=30, initial_heap_mb=64, heap_mb=140,
                                        gc="Serial", diagnostic_io="ram"),
@@ -166,7 +175,28 @@ print('Private R3 clone ready; production saves never copied')
                         f"--fps {args.fps} --heap-mb {args.heap_mb} --gc {args.gc} "
                         f"--initial-heap-mb {args.initial_heap_mb} "
                         f"--diagnostic-io {args.diagnostic_io} "
+                        f"{'--page-probe ' if args.page_probe else ''}"
                         f">{APP}/logs/ssh.log 2>&1 </dev/null &"))
+        elif args.action == "page":
+            remote(guard)
+            directory = diagnostic_dir()
+            result_path = directory + "/page-result.txt"
+            try: sftp.remove(result_path)
+            except FileNotFoundError: pass
+            write(directory + "/page.request", args.page.encode())
+            until = time.monotonic() + 30
+            while time.monotonic() < until:
+                try:
+                    result = read(result_path).decode()
+                    break
+                except FileNotFoundError:
+                    time.sleep(.25)
+            else:
+                raise TimeoutError("No gallery response; start R4 with --page-probe")
+            (output / f"page-{time.time_ns()}.txt").write_text(result, encoding="utf-8")
+            print(result)
+            if "\nopened\n" not in result:
+                raise RuntimeError("Gallery request rejected")
         elif args.action == "status":
             print(json.dumps(state(), ensure_ascii=False, indent=2))
             print(shell(f"tail -20 {APP}/logs/supervisor.log"))
@@ -334,7 +364,7 @@ for p in Path('/proc').glob('[0-9]*/comm'):
             result['processes'].append(dict(pid=int(p.parent.name),comm=comm,cmd=cmd,
                 stat=(p.parent/'stat').read_text(),status=(p.parent/'status').read_text()))
     except FileNotFoundError: pass
-for directory in ('SlayTheSpireDualR3','SlayTheSpireGeometryP1','SlayTheSpireTouchR2'):
+for directory in ('SlayTheSpireDualR3','SlayTheSpireDualR4','SlayTheSpireGeometryP1','SlayTheSpireTouchR2'):
     base=app.parent/directory
     path=base/'logs/session.lock'
     if path.exists():

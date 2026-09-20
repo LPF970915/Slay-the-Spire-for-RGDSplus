@@ -1,4 +1,6 @@
 import rgds.r3.UiTransform;
+import rgds.r3.AimCurve;
+import com.badlogic.gdx.math.Vector2;
 
 public final class UiTransformTest {
     private static void close(float actual, float expected) {
@@ -27,5 +29,45 @@ public final class UiTransformTest {
             throw new AssertionError("Crowded hands must use a bounded smaller scale");
         System.out.println("R3 affine round trips passed: " + samples +
                 " points; anchors and crowded-hand scaling passed (not physical touch)");
+        AimCurve curve = new AimCurve();
+        Vector2 point = new Vector2();
+        for (float enemyX : new float[]{32, 256, 512, 768, 992}) {
+            curve.set(512, 1200, enemyX, 320);
+            curve.point(point, 0);
+            close(point.x, 512);
+            close(point.y, 1200);
+            for (int i = 1; i <= 160; i++) {
+                curve.point(point, i / 160f);
+                if (!Float.isFinite(point.x) || !Float.isFinite(point.y) ||
+                        !Float.isFinite(curve.angle(i / 160f)))
+                    throw new AssertionError("Finite native curve and sprite rotation required");
+            }
+            close(point.x, enemyX);
+            close(point.y, 320);
+            if (!Float.isFinite(curve.arrowAngle())) throw new AssertionError("Arrow tangent");
+            curve.point(point, .5f);
+            close(point.x, 512 * .875f + enemyX * .125f);
+            close(point.y, 320);
+            curve.point(point, .75f);
+            if (!(point.y < 320)) throw new AssertionError("Native arc must bend back toward target");
+        }
+        close(AimCurve.panelY(768, 0), 0);
+        close(AimCurve.panelY(816, 1), 768);
+        close(AimCurve.panelY(780, 0), -12);
+        close(AimCurve.panelY(810, 1), 774);
+        for (float y : new float[]{0, 768, 780, 800, 816, 1584})
+            close(AimCurve.panelY(y, 1) - AimCurve.panelY(y, 0), 816);
+        for (float length : new float[]{0, 200, 800, 1600, 10000}) {
+            int count = AimCurve.segments(length, .533333f);
+            if (count < 20 || count > 96) throw new AssertionError("Bounded native sprite count");
+        }
+        close(AimCurve.bodyScale(0, 1), 7.4f / 18);
+        close(AimCurve.bodyScale(.95f, 1), 15f / 18);
+        for (float y : new float[]{0, 384, 768, 1152, 1536}) {
+            float ndc = 2 * (.5f * y) / 768 - 1;
+            close((ndc + 1) * 1536 / 2, y);
+            close((ndc + 1) * 1536 / 2 - 768, y - 768);
+        }
+        System.out.println("R4 native quadratic, sprite size/rotation, panel translation and 1:1 map tiles passed");
     }
 }

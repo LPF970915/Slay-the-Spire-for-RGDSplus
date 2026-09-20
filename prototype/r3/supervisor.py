@@ -69,13 +69,16 @@ def main():
     parser.add_argument("--initial-heap-mb", type=int, choices=(32, 64, 128), default=64)
     parser.add_argument("--gc", choices=("Serial", "G1", "Parallel"), default="Serial")
     parser.add_argument("--diagnostic-io", choices=("card", "ram"), default="ram")
+    parser.add_argument("--page-probe", action="store_true")
     args = parser.parse_args()
     if args.recover:
         recover(args.recover)
         return
     (ROOT / "logs").mkdir(exist_ok=True)
     locks = []
-    for app in (ROOT, ROOT.parent / "SlayTheSpireGeometryP1", ROOT.parent / "SlayTheSpireTouchR2"):
+    for app in dict.fromkeys((ROOT, ROOT.parent / "SlayTheSpireDualR3",
+                             ROOT.parent / "SlayTheSpireDualR4",
+                             ROOT.parent / "SlayTheSpireGeometryP1", ROOT.parent / "SlayTheSpireTouchR2")):
         if not (app / "logs").is_dir():
             continue
         lock = (app / "logs/session.lock").open("a+")
@@ -132,6 +135,9 @@ def main():
         env.update(RGDS_R3_FPS=str(args.fps), RGDS_R3_GC=args.gc,
                    SLAYTHESPIRE_XMX=f"{args.heap_mb}M", RGDS_R3_PROFILE="1",
                    RGDS_R3_XMS=str(args.initial_heap_mb))
+        if args.page_probe and ROOT.name != "SlayTheSpireDualR4":
+            raise RuntimeError("Page probe requires the separate R4 save clone")
+        env["RGDS_R4_PAGE_PROBE"] = "1" if args.page_probe else "0"
         message(f"[r3-profile] fps={args.fps} heap_mb={args.heap_mb} initial_heap_mb={args.initial_heap_mb} gc={args.gc} io={args.diagnostic_io}")
         runtime = Path(state["runtime"])
         env.update(RGDS_DIAGNOSTICS_DIR=str(runtime),
