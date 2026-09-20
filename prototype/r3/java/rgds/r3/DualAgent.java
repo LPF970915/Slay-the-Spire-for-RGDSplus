@@ -243,7 +243,7 @@ public final class DualAgent {
             target.getDeclaredMethod("render").instrument(new ExprEditor() {
                 public void edit(MethodCall c) throws CannotCompileException {
                     if (c.getClassName().endsWith(".SpeechWord") && c.getMethodName().equals("render"))
-                        route(c, 1, false);
+                        route(c, 0, false);
                 }
             });
         } else if (simple.equals("CharacterSelectScreen")) {
@@ -309,7 +309,17 @@ public final class DualAgent {
             String inner = simple.equals("StatsScreen") ? "renderStatScreen" : "renderRunHistoryScreen";
             target.getDeclaredMethod("render").instrument(new ExprEditor() {
                 public void edit(MethodCall c) throws CannotCompileException {
-                    if (c.getMethodName().equals(inner)) mirrorCall(c, 1);
+                    if (c.getMethodName().equals(inner)) route(c, 1, false);
+                }
+            });
+        } else if (simple.equals("CreditsScreen")) {
+            target.getDeclaredMethod("render").instrument(new ExprEditor() {
+                public void edit(MethodCall c) throws CannotCompileException {
+                    if (c.getClassName().endsWith(".SpriteBatch") &&
+                            c.getMethodName().equals("draw")) {
+                        c.replace("{ if ($1 != com.megacrit.cardcrawl.helpers.ImageMaster.WHITE_SQUARE_IMG) "
+                                + "$proceed($$); }");
+                    }
                 }
             });
         } else if (simple.equals("PatchNotesScreen")) {

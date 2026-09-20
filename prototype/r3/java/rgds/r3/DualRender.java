@@ -172,6 +172,14 @@ public final class DualRender {
             batch.setProjectionMatrix(projectedMatrix.set(baseProjection).scale(1, .5f, 1));
             restoreViewport();
         }
+        if (type.endsWith(".CreditsScreen")) {
+            // Credits use one native scroll coordinate over both panels.
+            mapPass = true;
+            batch.setProjectionMatrix(projectedMatrix.set(baseProjection).scale(1, .5f, 1));
+            restoreViewport();
+            dimCreditsPanel(batch, 0);
+            dimCreditsPanel(batch, 1);
+        }
         if (mirror) beginBackground(batch);
     }
 
@@ -235,8 +243,11 @@ public final class DualRender {
         Hitbox hb = (Hitbox)value;
         Object slotValue = get(owner, "slot");
         int slot = slotValue instanceof Number ? ((Number)slotValue).intValue() : 0;
+        int count = com.megacrit.cardcrawl.events.RoomEventDialog.optionList == null
+                ? 1 : com.megacrit.cardcrawl.events.RoomEventDialog.optionList.size();
+        if (count == 0) count = 1;
         float scale = 1.22f;
-        float targetY = 480 - slot * 105;
+        float targetY = 384 + (count - 1) * 52 - slot * 104;
         UiTransform layout = UiTransform.anchored(scale, hb.cX, hb.cY, 512, targetY);
         applyLayout(batch, layout);
         hitTransforms.put(hb, layout);
@@ -317,18 +328,15 @@ public final class DualRender {
         if (CardCrawlGame.mode != CardCrawlGame.GameMode.GAMEPLAY ||
                 AbstractDungeon.getCurrRoom() == null) return 1;
         if (AbstractDungeon.getCurrRoom().event instanceof com.megacrit.cardcrawl.neow.NeowEvent)
-            return 1;
+            return 0;
         // Generic event text and its speech animation stay on the upper panel.
         // Only LargeDialogOptionButton is routed to the lower touch panel.
         return 0;
     }
 
     public static void narration(SpriteBatch batch) {
-        boolean neow = CardCrawlGame.mode == CardCrawlGame.GameMode.GAMEPLAY &&
-                AbstractDungeon.getCurrRoom() != null &&
-                AbstractDungeon.getCurrRoom().event instanceof com.megacrit.cardcrawl.neow.NeowEvent;
-        push(batch, neow ? 1 : 0, false);
-        if (neow) applyLayout(batch, new UiTransform(1.25f, -128, 60));
+        // Keep Neow's speech bubble at the native single-screen position.
+        push(batch, 0, false);
     }
 
     public static int tipTarget() {
@@ -507,6 +515,25 @@ public final class DualRender {
         batch.setColor(previous);
     }
 
+    public static void upperBlackOverlay(SpriteBatch batch) {
+        if (!pageId.equals("U30")) return;
+        Color previous = new Color(batch.getColor());
+        push(batch, 0, false);
+        batch.setColor(0, 0, 0, .72f);
+        batch.draw(ImageMaster.WHITE_SQUARE_IMG, 0, 0, 1024, 768);
+        pop(batch);
+        batch.setColor(previous);
+    }
+
+    private static void dimCreditsPanel(SpriteBatch batch, int target) {
+        Color previous = new Color(batch.getColor());
+        push(batch, target, false);
+        batch.setColor(0, 0, 0, .62f);
+        batch.draw(ImageMaster.WHITE_SQUARE_IMG, 0, 0, 1024, 768);
+        pop(batch);
+        batch.setColor(previous);
+    }
+
     public static void targeting(SpriteBatch batch, AbstractPlayer player) {
         Object monster = get(player, "hoveredMonster");
         Object card = get(player, "hoveredCard");
@@ -568,6 +595,7 @@ public final class DualRender {
 
     public static void finish(SpriteBatch batch) {
         if (!stack.isEmpty()) throw new IllegalStateException("Unbalanced dual scopes at frame end");
+        upperBlackOverlay(batch);
         PageSummary.render(batch, pageId);
         long now = System.nanoTime();
         if (now >= nextReport) {

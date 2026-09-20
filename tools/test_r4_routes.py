@@ -135,6 +135,34 @@ class RouteContracts(unittest.TestCase):
                 1)[0]
         self.assertNotIn("mirrorDraw(c)", event_block)
 
+    def test_neow_credits_and_stats_follow_panel_roles(self):
+        renderer = (HERE / "java/rgds/r3/DualRender.java").read_text()
+        self.assertIn("Keep Neow's speech bubble at the native single-screen position", renderer)
+        self.assertIn(
+            "event instanceof com.megacrit.cardcrawl.neow.NeowEvent)\n            return 0;",
+            renderer,
+        )
+        self.assertIn("public static void upperBlackOverlay", renderer)
+        self.assertIn('if (!pageId.equals("U30")) return;', renderer)
+        self.assertIn("batch.setColor(0, 0, 0, .72f)", renderer)
+        self.assertIn('type.endsWith(".CreditsScreen")', renderer)
+        self.assertIn("dimCreditsPanel(batch, 0)", renderer)
+        self.assertIn("dimCreditsPanel(batch, 1)", renderer)
+        agent = (HERE / "java/rgds/r3/DualAgent.java").read_text()
+        neow = agent.split('simple.equals("NeowNarrationScreen")', 1)[1].split(
+            'else if (simple.equals("CharacterSelectScreen"))', 1)[0]
+        self.assertIn("route(c, 0, false)", neow)
+        stats = agent.split(
+            'simple.equals("StatsScreen") || simple.equals("RunHistoryScreen")',
+            1,
+        )[1].split('else if (simple.equals("PatchNotesScreen"))', 1)[0]
+        self.assertIn("route(c, 1, false)", stats)
+        self.assertNotIn("mirrorCall(c, 1)", stats)
+        credits = agent.split('else if (simple.equals("CreditsScreen"))', 1)[1].split(
+            'else if (simple.equals("PatchNotesScreen"))', 1)[0]
+        self.assertIn("ImageMaster.WHITE_SQUARE_IMG", credits)
+        self.assertIn("$proceed($$)", credits)
+
 
 if __name__ == "__main__":
     unittest.main()
