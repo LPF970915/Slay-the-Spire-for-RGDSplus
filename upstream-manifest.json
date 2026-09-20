@@ -1,0 +1,220 @@
+{
+  "source_repo": "PortsMaster/PortMaster-New",
+  "source_commit": "d4a4130059e2c8e8627bc55b78e3e0fae5b038f8",
+  "source_root": "ports/slaythespire",
+  "game_data_included": false,
+  "excluded_paths": [
+    "slaythespire/betaPreferences/",
+    "slaythespire/sendToDevs/"
+  ],
+  "files": [
+    {
+      "path": "upstream/README.md",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/README.md",
+      "git_blob": "02f5fc37ba81dfb26256d99895f742943cf42aef",
+      "sha256": "cc9c96afb3638af77ccf673662b9334fd4cce82cb1754050f0af21121e05ee5f",
+      "bytes": 573
+    },
+    {
+      "path": "upstream/Slay the Spire.sh",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/Slay the Spire.sh",
+      "git_blob": "66da2b9cfc5ab4b486ce26ff569efd5144d746a8",
+      "sha256": "2196b3dc87e7b0d0a00ec28ea91101816d9a9c7e5f5973df82962b3a0a2fce5d",
+      "bytes": 4474
+    },
+    {
+      "path": "upstream/gameinfo.xml",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/gameinfo.xml",
+      "git_blob": "67b17e120752e2217ce36bf7eff754ed24d7b3fb",
+      "sha256": "820d89f60c3db3b6e17b8c84c5dc3213514aaf9a6a4b6da390197961243dc99b",
+      "bytes": 646
+    },
+    {
+      "path": "upstream/port.json",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/port.json",
+      "git_blob": "99488a2dd6d28266e4234dc41e5e4d3d168e21d1",
+      "sha256": "62182c73766c7ceaa76c144a86ae8ac6cedecf9d3638c836cc0306873cf28225",
+      "bytes": 1120
+    },
+    {
+      "path": "upstream/screenshot.png",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/screenshot.png",
+      "git_blob": "237aa148bb13cc3239520baa550f9454863dfdba",
+      "sha256": "50e127e06fae71402c6d4d0620cd0866c69a53aa63df14d50f169f8359ab7689",
+      "bytes": 297279
+    },
+    {
+      "path": "upstream/slaythespire/FontSizeAgent.jar",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/slaythespire/FontSizeAgent.jar",
+      "git_blob": "382c5b8ed723c4dcf507ffcf8e8e09cd2916a79f",
+      "sha256": "51de604574ba12eb5becf66a5231e49e44636a1d56b616622ef9ab69e4c7febf",
+      "bytes": 791722
+    },
+    {
+      "path": "upstream/slaythespire/controller-injector.jar",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/slaythespire/controller-injector.jar",
+      "git_blob": "5da3ef47670e9325ece6680270eadeb5a234b2d6",
+      "sha256": "6098a8909b275067f38b2697f3ebc5032a50f714821188fbd9a8711f11825cb8",
+      "bytes": 796407
+    },
+    {
+      "path": "upstream/slaythespire/controller-injector.jar.bak",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/slaythespire/controller-injector.jar.bak",
+      "git_blob": "092268fd9e0d398e31f82db2afff2a0396907f6d",
+      "sha256": "9a957eb6347987abf0807f8a4c52014259d8cd86a6e5839be7048873303feaa3",
+      "bytes": 793471
+    },
+    {
+      "path": "upstream/slaythespire/info.displayconfig",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/slaythespire/info.displayconfig",
+      "git_blob": "f627e4d4de4b8f7508882ecfb3fd8d24654feddb",
+      "sha256": "df5236a498b38f86b835bd510486bc376c813802625dc354c976dab41b6cd345",
+      "bytes": 29
+    },
+    {
+      "path": "upstream/slaythespire/libXrandr.so.2",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/slaythespire/libXrandr.so.2",
+      "git_blob": "02506f2dff9e22ede4f14fa5535e2a70e9275f24",
+      "sha256": "a7ee823e40765c7c6de5cdf207b241b3b08f0e81293e89a9a66cb36a24a4f7f0",
+      "bytes": 13912
+    },
+    {
+      "path": "upstream/slaythespire/libastcenc-neon-shared.so",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/slaythespire/libastcenc-neon-shared.so",
+      "git_blob": "555f4973057058e00545012bf349bb141b30f070",
+      "sha256": "3cf2163087659357cff4a343965201c0d7af8e3ea654207a7e1e48784cc5bd20",
+      "bytes": 193016
+    },
+    {
+      "path": "upstream/slaythespire/libgdx-controllers-desktop.so",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/slaythespire/libgdx-controllers-desktop.so",
+      "git_blob": "3f50721860c893818509eb8e7c34fd40cd1fbaf7",
+      "sha256": "8b092cfd7005c0377f5a5da1527cb9f6f67fe54a1a8092709e94085f0a8a4387",
+      "bytes": 175816
+    },
+    {
+      "path": "upstream/slaythespire/libtexcompress.so",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/slaythespire/libtexcompress.so",
+      "git_blob": "2b2ba57b50847ef1bf1001f62b86c49a98e6e362",
+      "sha256": "06c1102ea30fa2c5a04371601b483f2927d2cf9039994ad2216d1abfe6616b36",
+      "bytes": 22128
+    },
+    {
+      "path": "upstream/slaythespire/libwrap.so",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/slaythespire/libwrap.so",
+      "git_blob": "6093f57346543afe3f5a6869d12abcba07123569",
+      "sha256": "4e24fb530a905188242b174d99462a9b424a3b5f98de26fb2bf76894d25f771e",
+      "bytes": 8192
+    },
+    {
+      "path": "upstream/slaythespire/slay.gptk",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/slaythespire/slay.gptk",
+      "git_blob": "bef5a83e14152638a0004b35531ab1f2d4303d11",
+      "sha256": "b0f503330653655a726cc3c3a77c274f0841594bd0c0c7e32eb4ee5840fbf76c",
+      "bytes": 491
+    },
+    {
+      "path": "upstream/slaythespire/texcompress-agent.jar",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/slaythespire/texcompress-agent.jar",
+      "git_blob": "addbbcca6b28105b86cb9950718eb21cd0cd701c",
+      "sha256": "467d66fee85b7e6eab909449f54e5810e6a918d1abb440d4219766535207be2a",
+      "bytes": 159515
+    },
+    {
+      "path": "upstream/slaythespire/tools/libs/libFLAC.so.8",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/slaythespire/tools/libs/libFLAC.so.8",
+      "git_blob": "6d6b1d9e150768d41efdd84f93400187507db5f7",
+      "sha256": "a578d2ce1077aa027f3174537e74795e0d895dbf24fa2694083e884065ef74e4",
+      "bytes": 202616
+    },
+    {
+      "path": "upstream/slaythespire/tools/libs/libogg.so.0",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/slaythespire/tools/libs/libogg.so.0",
+      "git_blob": "1559d8e0752d87a70b76b20701f2cc70a4169e55",
+      "sha256": "66015f344b53895affd3ff153f402097ebaa2add33246bea2d7fca27b682e07a",
+      "bytes": 38648
+    },
+    {
+      "path": "upstream/slaythespire/tools/libs/libvorbis.so.0",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/slaythespire/tools/libs/libvorbis.so.0",
+      "git_blob": "6325b63da05ef48b181dafb30033f06742fbff0c",
+      "sha256": "9fa2ef36b894c4fcdc22bcc7624047421de38d9862c727ff2187534e664beeb6",
+      "bytes": 165736
+    },
+    {
+      "path": "upstream/slaythespire/tools/libs/libvorbisenc.so.2",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/slaythespire/tools/libs/libvorbisenc.so.2",
+      "git_blob": "6d5eb4385c1df27c72edf6519e7c8bf4e4d3d01c",
+      "sha256": "d0584b63037a885a82b1e94c2d4f48af48a62c47f911ccff8ae8ebfd290cb2c7",
+      "bytes": 653216
+    },
+    {
+      "path": "upstream/slaythespire/tools/ogg.py",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/slaythespire/tools/ogg.py",
+      "git_blob": "11e5c96982b727861ab838cc69cac759bc2d5d79",
+      "sha256": "a2fa693c3e8a819838c7be0261e418bf03560615ad98e54e740b8317b9c52dba",
+      "bytes": 10813
+    },
+    {
+      "path": "upstream/slaythespire/tools/oggdec",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/slaythespire/tools/oggdec",
+      "git_blob": "dbce910242db7de6088df5d93bcbf2e7731add7f",
+      "sha256": "ede5c9be81eef6c68a81f84f993e77286afb07a876daf20316be49acd157625d",
+      "bytes": 18896
+    },
+    {
+      "path": "upstream/slaythespire/tools/oggenc",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/slaythespire/tools/oggenc",
+      "git_blob": "910b20d63638a925cfdce138bd31f07fa630d8c1",
+      "sha256": "77451fde8dd8f7b33b6348aacdeada8418d61f0ba08bc5f36e6030192d1e7685",
+      "bytes": 73608
+    },
+    {
+      "path": "upstream/slaythespire/tools/patch.txt",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/slaythespire/tools/patch.txt",
+      "git_blob": "ae3da37611fde8142357a45863fd9b0814bccdd5",
+      "sha256": "cd26f7f4806d8490d57d9bf89815cf0ffb2f13e5e744376a5dbe887650bc8036",
+      "bytes": 1778
+    },
+    {
+      "path": "upstream/slaythespire/tools/steam.xdelta",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/slaythespire/tools/steam.xdelta",
+      "git_blob": "0980b745b007136985975a0b8b35021717e4e3d7",
+      "sha256": "55130f38c0a78619bdf91a58c3817954679d2821c302dd8711a2144f75118b21",
+      "bytes": 15288858
+    },
+    {
+      "path": "upstream/slaythespire/twitchconfig.txt",
+      "source_repo": "PortsMaster/PortMaster-New",
+      "source_path": "ports/slaythespire/slaythespire/twitchconfig.txt",
+      "git_blob": "ae31481d12c2854e337dd025b5302465b6d50241",
+      "sha256": "9d66e1086aeba39af5352a69813f78c98f808da53e8f9ae148ce9c474609f297",
+      "bytes": 664
+    }
+  ]
+}
