@@ -49,6 +49,9 @@ public final class DualRender {
     private static final Matrix4 baseProjection = new Matrix4();
     private static final Matrix4 layoutMatrix = new Matrix4();
     private static final Matrix4 projectedMatrix = new Matrix4();
+    private static final Matrix4 mirrorCombined = new Matrix4();
+    private static UiTransform mirrorLayout;
+    private static final TextureRegion lowerSky = new TextureRegion();
     private static Object registeredRoom;
     private static Object registeredScreen;
     private static final AimCurve aimCurve = new AimCurve();
@@ -63,12 +66,14 @@ public final class DualRender {
         int screen;
         boolean mirror;
         boolean map;
+        UiTransform preview;
         final Matrix4 transform = new Matrix4();
         final Matrix4 projection = new Matrix4();
         void save(SpriteBatch batch) {
             screen = DualRender.screen;
             mirror = backgroundPass;
             map = mapPass;
+            preview = mirrorLayout;
             transform.set(batch.getTransformMatrix());
             projection.set(batch.getProjectionMatrix());
         }
@@ -127,6 +132,7 @@ public final class DualRender {
         stack.push(saved);
         viewport(batch, target);
         backgroundPass = false;
+        mirrorLayout = null;
         mapPass = false;
         Matrix4 transform = layoutMatrix.idt();
         if (hand && splitDungeon && !AbstractDungeon.isScreenUp) {
@@ -149,6 +155,7 @@ public final class DualRender {
         batch.setTransformMatrix(state.transform);
         backgroundPass = state.mirror;
         mapPass = state.map;
+        mirrorLayout = state.preview;
         restoreViewport();
         freeStates.addFirst(state);
     }
@@ -173,7 +180,10 @@ public final class DualRender {
         boolean sky = region == get(owner, "sky");
         push(batch, bottom ? 1 : 0, false);
         if (sky) {
-            beginBackground(batch);
+            // Continue the lowest sky band instead of repeating the turquoise top.
+            push(batch, 1, false);
+            drawLowerSky(batch, (TextureRegion)region);
+            pop(batch);
         } else if (bottom) {
             float scale = 1.28f;
             Matrix4 transform = layoutMatrix.idt().translate(160 * (1 - scale),
@@ -190,6 +200,12 @@ public final class DualRender {
         return ((java.util.List<?>)get(owner, "midClouds")).contains(cloud);
     }
 
+    private static void drawLowerSky(SpriteBatch batch, TextureRegion sky) {
+        lowerSky.setRegion(sky);
+        lowerSky.setV(sky.getV2() - (sky.getV2() - sky.getV()) * .025f);
+        batch.draw(lowerSky, 0, 0, 1024, 768);
+    }
+
     public static void smallControl(SpriteBatch batch, Object owner, boolean mainMenu) {
         push(batch, 1, false);
         Object value = get(owner, "hb");
@@ -198,6 +214,8 @@ public final class DualRender {
         UiTransform layout;
         if (mainMenu) {
             layout = new UiTransform(1.65f, 24, 44);
+        } else if (pageId.equals("U14") && owner.getClass().getSimpleName().equals("CardSelectConfirmButton")) {
+            layout = UiTransform.anchored(1.22f, hb.cX, hb.cY, 512, 70);
         } else {
             float scale = 1.22f;
             float marginX = Math.min(496, hb.width * scale / 2 + 16);
@@ -210,12 +228,60 @@ public final class DualRender {
         hitTransforms.put(hb, layout);
     }
 
+    public static void eventOption(SpriteBatch batch, Object owner) {
+        push(batch, 1, false);
+        Object value = get(owner, "hb");
+        if (!(value instanceof Hitbox)) return;
+        Hitbox hb = (Hitbox)value;
+        Object slotValue = get(owner, "slot");
+        int slot = slotValue instanceof Number ? ((Number)slotValue).intValue() : 0;
+        float scale = 1.22f;
+        float targetY = 480 - slot * 105;
+        UiTransform layout = UiTransform.anchored(scale, hb.cX, hb.cY, 512, targetY);
+        applyLayout(batch, layout);
+        hitTransforms.put(hb, layout);
+    }
+
     public static void preview(SpriteBatch batch, Object item, Object owner) {
+        if (!ScreenRoutes.previewPage(pageId)) {
+            push(batch, screen, false);
+            State saved = stack.peek();
+            batch.setProjectionMatrix(saved.projection);
+            batch.setTransformMatrix(saved.transform);
+            backgroundPass = saved.mirror;
+            mapPass = saved.map;
+            mirrorLayout = saved.preview;
+            restoreViewport();
+            return;
+        }
         push(batch, 1, false);
         Object hb = get(item, "hb");
+        if (pageId.equals("U14") && item instanceof com.megacrit.cardcrawl.cards.AbstractCard &&
+                AbstractDungeon.player.hand.group.contains(item)) {
+            com.megacrit.cardcrawl.cards.AbstractCard c = (com.megacrit.cardcrawl.cards.AbstractCard)item;
+            boolean hovered = c == get(AbstractDungeon.player, "hoveredCard") ||
+                    c == AbstractDungeon.handCardSelectScreen.hoveredCard;
+            float scale = Math.min(1.20f, handLayout().scale);
+            UiTransform layout = UiTransform.anchored(scale, 512, c.current_y, 512, hovered ? 235 : 195);
+            applyLayout(batch, layout);
+            hitTransforms.put(c.hb, layout);
+        }
         if ((hb instanceof Hitbox && ((Hitbox)hb).hovered) ||
-                item == get(owner, "hoveredCard") || item == get(owner, "upgradePreviewCard"))
+                item == get(owner, "hoveredCard") || item == get(owner, "upgradePreviewCard") ||
+                pageId.equals("U14") && item == get(AbstractDungeon.player, "hoveredCard"))
+        {
+            float x, y, scale;
+            if (item instanceof com.megacrit.cardcrawl.cards.AbstractCard) {
+                com.megacrit.cardcrawl.cards.AbstractCard c = (com.megacrit.cardcrawl.cards.AbstractCard)item;
+                x = c.current_x; y = c.current_y;
+                scale = Math.min(3.8f, 1.9f / Math.max(.1f, c.drawScale));
+            } else {
+                Hitbox hit = (Hitbox)hb;
+                x = hit.cX; y = hit.cY; scale = 1.8f;
+            }
+            mirrorLayout = UiTransform.anchored(scale, x, y, 512, 384);
             beginBackground(batch);
+        }
     }
 
     public static void endPage(SpriteBatch batch, boolean mirror) {
@@ -252,7 +318,17 @@ public final class DualRender {
                 AbstractDungeon.getCurrRoom() == null) return 1;
         if (AbstractDungeon.getCurrRoom().event instanceof com.megacrit.cardcrawl.neow.NeowEvent)
             return 1;
-        return eventTarget(AbstractDungeon.getCurrRoom().event);
+        // Generic event text and its speech animation stay on the upper panel.
+        // Only LargeDialogOptionButton is routed to the lower touch panel.
+        return 0;
+    }
+
+    public static void narration(SpriteBatch batch) {
+        boolean neow = CardCrawlGame.mode == CardCrawlGame.GameMode.GAMEPLAY &&
+                AbstractDungeon.getCurrRoom() != null &&
+                AbstractDungeon.getCurrRoom().event instanceof com.megacrit.cardcrawl.neow.NeowEvent;
+        push(batch, neow ? 1 : 0, false);
+        if (neow) applyLayout(batch, new UiTransform(1.25f, -128, 60));
     }
 
     public static int tipTarget() {
@@ -347,13 +423,21 @@ public final class DualRender {
     public static boolean mirrorBatch() { return backgroundPass; }
 
     /** Only the GPU mesh submission is duplicated, not the scene's render call. */
-    public static void lowerBackgroundViewport() {
+    public static void lowerBackgroundViewport(SpriteBatch batch) {
         Gdx.gl.glViewport((1 - screen) * 1024, mapPass && screen == 1 ? -768 : 0,
                 1024, mapPass ? 1536 : 768);
+        if (mirrorLayout != null) {
+            mirrorCombined.set(baseProjection).translate(mirrorLayout.dx, mirrorLayout.dy, 0)
+                    .scale(mirrorLayout.scale, mirrorLayout.scale, 1).mul(batch.getTransformMatrix());
+            batch.getShader().setUniformMatrix("u_projTrans", mirrorCombined);
+        }
         backgroundBatches++;
     }
 
-    public static void restoreBackgroundViewport() {
+    public static void restoreBackgroundViewport(SpriteBatch batch) {
+        if (mirrorLayout != null)
+            batch.getShader().setUniformMatrix("u_projTrans",
+                    mirrorCombined.set(batch.getProjectionMatrix()).mul(batch.getTransformMatrix()));
         restoreViewport();
     }
 
@@ -384,23 +468,29 @@ public final class DualRender {
                 String.valueOf(CardCrawlGame.mainMenuScreen.screen);
         pageId = dungeon ? ScreenRoutes.dungeonId(nativeScreen, room) :
                 ScreenRoutes.MENU.getOrDefault(nativeScreen, "U33");
+        if (dungeon && nativeScreen.equals("CARD_REWARD") &&
+                Boolean.TRUE.equals(get(AbstractDungeon.cardRewardScreen, "chooseOne"))) pageId = "U16";
         if (splitDungeon && !AbstractDungeon.isScreenUp &&
                 Boolean.TRUE.equals(get(AbstractDungeon.player, "inSingleTargetMode"))) pageId = "U09";
         if (CardCrawlGame.cardPopup != null && CardCrawlGame.cardPopup.isOpen ||
                 CardCrawlGame.relicPopup != null && CardCrawlGame.relicPopup.isOpen) pageId = "U25";
         if (CardCrawlGame.dungeonTransitionScreen != null) pageId = "U01";
         if (CardCrawlGame.mode == CardCrawlGame.GameMode.SPLASH) pageId = "U01";
+        if (!dungeon && CardCrawlGame.mainMenuScreen != null &&
+                CardCrawlGame.mainMenuScreen.saveSlotScreen.shown) pageId = "U03";
+        if (dungeon && !AbstractDungeon.topPanel.potionUi.isHidden) pageId = "U12";
         pageClass = CardCrawlGame.mode + "/" + nativeScreen + "/" + room;
         viewport(batch, routedDungeon && ScreenRoutes.DUNGEON.containsKey(nativeScreen) ? 0 : 1);
         Color color = new Color(batch.getColor());
         push(batch, 1, false);
         batch.setColor(Color.WHITE);
-        if (!dungeon && CardCrawlGame.mode != CardCrawlGame.GameMode.SPLASH &&
+        if (!dungeon && CardCrawlGame.mode == CardCrawlGame.GameMode.CHAR_SELECT &&
+                CardCrawlGame.dungeonTransitionScreen == null &&
                 CardCrawlGame.mainMenuScreen != null) {
             Object bg = get(CardCrawlGame.mainMenuScreen, "bg");
             Object sky = get(bg, "sky");
             if (sky instanceof TextureRegion)
-                batch.draw((TextureRegion)sky, 0, 0, 1024, 768);
+                drawLowerSky(batch, (TextureRegion)sky);
         }
         pop(batch);
         batch.setColor(color);
@@ -478,6 +568,7 @@ public final class DualRender {
 
     public static void finish(SpriteBatch batch) {
         if (!stack.isEmpty()) throw new IllegalStateException("Unbalanced dual scopes at frame end");
+        PageSummary.render(batch, pageId);
         long now = System.nanoTime();
         if (now >= nextReport) {
             System.out.println("[rgds-r3] frames=" + frames + " updates=" + updates +
@@ -497,14 +588,15 @@ public final class DualRender {
                     state.setProperty("backgroundBatches", String.valueOf(backgroundBatches));
                     state.setProperty("controlScale", "1.40");
                     state.setProperty("battleInfoScale", "1.30");
-                    state.setProperty("build", "r4-layout-20260920-4");
+                    state.setProperty("build", "r4-layout-20260920-7");
                     state.setProperty("mapPolicy", "continuous-1024x1536-native-offset");
-                    state.setProperty("menuPolicy", "upper-tower-lower-base-1.28");
+                    state.setProperty("menuPolicy", "continuous-bottom-sky-band-tower-1.28");
                     state.setProperty("targetingPolicy", "native-red-sprites-quadratic-gpu-clipped");
                     state.setProperty("mode", String.valueOf(CardCrawlGame.mode));
                     state.setProperty("screen", String.valueOf(AbstractDungeon.screen));
                     state.setProperty("layout", splitDungeon ? "battle-split" : routedDungeon ? "room-split" : "menu-or-lower-fallback");
                     state.setProperty("pageId", pageId);
+                    state.setProperty("reviewScene", ReviewProbe.scene());
                     state.setProperty("pageClass", pageClass);
                     state.setProperty("seenPages", String.join(",", seenPages));
                     Path path = Path.of(directory, "dual-state.xml");

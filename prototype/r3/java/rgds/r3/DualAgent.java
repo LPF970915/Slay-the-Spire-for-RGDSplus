@@ -30,21 +30,25 @@ public final class DualAgent {
                         "MainMenuScreen", "LwjglApplicationConfiguration", "OverlayMenu",
                         "AbstractMonster", "AbstractCreature", "Hitbox", "SpriteBatch",
                         "CharacterOption", "EventRoom", "TitleBackground", "DungeonMap",
-                        "MapCircleEffect").contains(simple)) return null;
+                        "MapCircleEffect", "CardGroup", "StoreRelic", "StorePotion", "Metrics",
+                        "InfiniteSpeechBubble", "SpeechTextEffect").contains(simple)) return null;
                 CtClass target = null;
                 try {
                     ClassPool pool = new ClassPool(true);
                     pool.insertClassPath(new LoaderClassPath(loader));
                     target = pool.makeClass(new ByteArrayInputStream(bytes));
-                    if (simple.equals("SpriteBatch")) {
+                    if (simple.equals("Metrics")) {
+                        target.getDeclaredMethod("run").insertBefore(
+                                "if (rgds.r3.ReviewProbe.enabled) return;");
+                    } else if (simple.equals("SpriteBatch")) {
                         target.getDeclaredMethod("flush").instrument(new ExprEditor() {
                             public void edit(MethodCall c) throws CannotCompileException {
                                 if (c.getClassName().equals("com.badlogic.gdx.graphics.Mesh") &&
                                         c.getMethodName().equals("render"))
                                     c.replace("{ $proceed($$); if (rgds.r3.DualRender.mirrorBatch()) {"
-                                        + "rgds.r3.DualRender.lowerBackgroundViewport();"
+                                        + "rgds.r3.DualRender.lowerBackgroundViewport(this);"
                                         + "try { $proceed($$); } finally {"
-                                        + "rgds.r3.DualRender.restoreBackgroundViewport(); } } }");
+                                        + "rgds.r3.DualRender.restoreBackgroundViewport(this); } } }");
                             }
                         });
                     } else if (simple.equals("LwjglApplicationConfiguration")) {
@@ -181,6 +185,9 @@ public final class DualAgent {
             target.getDeclaredMethod("render").insertBefore(
                     "rgds.r3.DualRender.smallControl($1,this," + simple.equals("MenuButton") + ");");
             target.getDeclaredMethod("render").insertAfter("rgds.r3.DualRender.pop($1);", true);
+        } else if (simple.equals("InfiniteSpeechBubble") || simple.equals("SpeechTextEffect")) {
+            target.getDeclaredMethod("render").insertBefore("rgds.r3.DualRender.narration($1);");
+            target.getDeclaredMethod("render").insertAfter("rgds.r3.DualRender.pop($1);", true);
         } else if (simple.equals("DungeonMap")) {
             for (String name : new String[]{"renderNormalMap", "renderFinalActMap"})
                 target.getDeclaredMethod(name).instrument(new ExprEditor() {
@@ -267,8 +274,8 @@ public final class DualAgent {
                 public void edit(MethodCall c) throws CannotCompileException {
                     String owner = c.getClassName(), method = c.getMethodName();
                     if (owner.endsWith(".LargeDialogOptionButton") && method.equals("render"))
-                        route(c, 1, false);
-                    else if (owner.endsWith(".SpriteBatch") && method.equals("draw")) mirrorDraw(c);
+                        c.replace("{ rgds.r3.DualRender.eventOption($1,$0);"
+                                + "try { $proceed($$); } finally { rgds.r3.DualRender.pop($1); } }");
                 }
             });
         } else if (simple.equals("SingleCardViewPopup") || simple.equals("SingleRelicViewPopup")) {
@@ -314,7 +321,8 @@ public final class DualAgent {
             });
         }
         String id = ScreenRoutes.id(target.getName());
-        if (id != null && ScreenRoutes.previewPage(id) && ScreenRoutes.LOWER.containsKey(target.getName())) {
+        if (simple.equals("CardGroup") || simple.equals("StoreRelic") || simple.equals("StorePotion") ||
+                id != null && ScreenRoutes.previewPage(id) && ScreenRoutes.LOWER.containsKey(target.getName())) {
             for (CtMethod method : target.getDeclaredMethods()) {
                 if (!method.getName().startsWith("render")) continue;
                 method.instrument(new ExprEditor() {
@@ -322,8 +330,10 @@ public final class DualAgent {
                         String owner = c.getClassName(), method = c.getMethodName();
                         if ((owner.endsWith(".AbstractCard") && (method.equals("render") ||
                                 method.equals("renderInLibrary"))) ||
-                                (owner.endsWith(".AbstractRelic") && method.equals("render")) ||
-                                (owner.endsWith(".AbstractPotion") && method.equals("labRender")))
+                                (owner.endsWith(".AbstractRelic") &&
+                                        (method.equals("render") || method.equals("renderWithoutAmount"))) ||
+                                (owner.endsWith(".AbstractPotion") &&
+                                        (method.equals("labRender") || method.equals("shopRender"))))
                             c.replace("{ rgds.r3.DualRender.preview($1,$0,this);"
                                     + "try { $proceed($$); } finally {"
                                     + "rgds.r3.DualRender.endPage($1,true); } }");

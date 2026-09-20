@@ -70,6 +70,7 @@ def main():
     parser.add_argument("--gc", choices=("Serial", "G1", "Parallel"), default="Serial")
     parser.add_argument("--diagnostic-io", choices=("card", "ram"), default="ram")
     parser.add_argument("--page-probe", action="store_true")
+    parser.add_argument("--review", action="store_true")
     args = parser.parse_args()
     if args.recover:
         recover(args.recover)
@@ -78,6 +79,7 @@ def main():
     locks = []
     for app in dict.fromkeys((ROOT, ROOT.parent / "SlayTheSpireDualR3",
                              ROOT.parent / "SlayTheSpireDualR4",
+                             ROOT.parent / "SlayTheSpireDualR4Review",
                              ROOT.parent / "SlayTheSpireGeometryP1", ROOT.parent / "SlayTheSpireTouchR2")):
         if not (app / "logs").is_dir():
             continue
@@ -137,6 +139,9 @@ def main():
                    RGDS_R3_XMS=str(args.initial_heap_mb))
         if args.page_probe and ROOT.name != "SlayTheSpireDualR4":
             raise RuntimeError("Page probe requires the separate R4 save clone")
+        if args.review and ROOT.name != "SlayTheSpireDualR4Review":
+            raise RuntimeError("Review fixtures require their disposable save clone")
+        env["RGDS_R4_REVIEW"] = "1" if args.review else "0"
         env["RGDS_R4_PAGE_PROBE"] = "1" if args.page_probe else "0"
         message(f"[r3-profile] fps={args.fps} heap_mb={args.heap_mb} initial_heap_mb={args.initial_heap_mb} gc={args.gc} io={args.diagnostic_io}")
         runtime = Path(state["runtime"])

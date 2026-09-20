@@ -37,6 +37,12 @@ public final class TransformTest {
         inventory.add("com/megacrit/cardcrawl/scenes/TitleBackground");
         inventory.add("com/megacrit/cardcrawl/map/DungeonMap");
         inventory.add("com/megacrit/cardcrawl/vfx/MapCircleEffect");
+        inventory.add("com/megacrit/cardcrawl/cards/CardGroup");
+        inventory.add("com/megacrit/cardcrawl/shop/StoreRelic");
+        inventory.add("com/megacrit/cardcrawl/shop/StorePotion");
+        inventory.add("com/megacrit/cardcrawl/metrics/Metrics");
+        inventory.add("com/megacrit/cardcrawl/vfx/InfiniteSpeechBubble");
+        inventory.add("com/megacrit/cardcrawl/vfx/SpeechTextEffect");
         for (String control : rgds.r3.DualAgent.SMALL_CONTROLS) {
             String prefix = control.startsWith("Menu") ? "screens/mainMenu/" : "ui/buttons/";
             inventory.add("com/megacrit/cardcrawl/" + prefix + control);

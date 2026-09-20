@@ -77,6 +77,64 @@ class RouteContracts(unittest.TestCase):
         curve = (HERE / "java/rgds/r3/AimCurve.java").read_text()
         self.assertIn("Bezier.quadratic(", curve)
 
+    def test_review_fixtures_are_separate_and_labelled(self):
+        review = (HERE / "java/rgds/r3/ReviewProbe.java").read_text()
+        self.assertIn('"1".equals(System.getenv("RGDS_R4_REVIEW"))', review)
+        self.assertIn('getFileName().toString().equals("SlayTheSpireDualR4Review")', review)
+        self.assertIn('if (!enabled || !id.matches', review)
+        supervisor = (HERE / "supervisor.py").read_text()
+        self.assertIn('args.review and ROOT.name != "SlayTheSpireDualR4Review"', supervisor)
+        agent = (HERE / "java/rgds/r3/DualAgent.java").read_text()
+        self.assertIn('"if (rgds.r3.ReviewProbe.enabled) return;"', agent)
+        self.assertNotIn("--review", (HERE / "Slay the Spire R4 All Pages.sh").read_text())
+        collector = (ROOT / "tools/capture_r4_review.py").read_text()
+        self.assertIn("isolated-native-ui-specimen", collector)
+        self.assertIn('physical_verified=False', collector)
+
+    def test_preview_projection_restores_batch_and_sky_uses_bottom_band(self):
+        renderer = (HERE / "java/rgds/r3/DualRender.java").read_text()
+        self.assertIn('mirrorLayout = state.preview;', renderer)
+        self.assertIn('mirrorCombined.set(batch.getProjectionMatrix()).mul(batch.getTransformMatrix())', renderer)
+        self.assertIn('batch.setProjectionMatrix(saved.projection)', renderer)
+        self.assertIn('sky.getV2() - (sky.getV2() - sky.getV()) * .025f', renderer)
+        self.assertNotIn('glReadPixels', renderer)
+
+    def test_review_restores_without_disposing_reusable_room(self):
+        review = (HERE / "java/rgds/r3/ReviewProbe.java").read_text()
+        self.assertNotIn("setCurrMapNode(", review)
+        self.assertIn("AbstractDungeon.currMapNode = baseline;", review)
+        self.assertIn("AbstractDungeon.overlayMenu.hideBlackScreen()", review)
+        self.assertIn("AbstractDungeon.dynamicBanner.hide()", review)
+        self.assertIn("dungeonTransitionScreen.isComplete = false", review)
+        renderer = (HERE / "java/rgds/r3/DualRender.java").read_text()
+        self.assertIn('get(AbstractDungeon.cardRewardScreen, "chooseOne")', renderer)
+        self.assertIn('baselineHand.addAll(AbstractDungeon.player.hand.group)', review)
+        device = (HERE / "device.py").read_text()
+        self.assertIn('sftp.posix_rename(request + ".tmp", request)', device)
+
+    def test_selection_hand_keeps_confirm_and_inverse_hitbox(self):
+        renderer = (HERE / "java/rgds/r3/DualRender.java").read_text()
+        self.assertIn('equals("CardSelectConfirmButton")', renderer)
+        self.assertIn('hb.cX, hb.cY, 512, 70', renderer)
+        self.assertIn('AbstractDungeon.player.hand.group.contains(item)', renderer)
+        self.assertIn('hitTransforms.put(c.hb, layout)', renderer)
+
+    def test_generic_event_text_stays_upper_and_only_options_move_lower(self):
+        renderer = (HERE / "java/rgds/r3/DualRender.java").read_text()
+        dialog = renderer.split("public static int dialogTarget()", 1)[1].split(
+            "public static void narration", 1)[0]
+        self.assertIn("return 0;", dialog)
+        self.assertIn("Generic event text and its speech animation stay on the upper panel", dialog)
+        self.assertIn("public static void eventOption", renderer)
+        agent = (HERE / "java/rgds/r3/DualAgent.java").read_text()
+        self.assertIn("DualRender.eventOption", agent)
+        event_block = agent.split(
+            'else if (simple.equals("GenericEventDialog") || simple.equals("RoomEventDialog"))',
+            1)[1].split(
+                'else if (simple.equals("SingleCardViewPopup") || simple.equals("SingleRelicViewPopup"))',
+                1)[0]
+        self.assertNotIn("mirrorDraw(c)", event_block)
+
 
 if __name__ == "__main__":
     unittest.main()

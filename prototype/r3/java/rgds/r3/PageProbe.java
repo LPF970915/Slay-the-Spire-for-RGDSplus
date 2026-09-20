@@ -10,10 +10,11 @@ import java.nio.file.StandardCopyOption;
 
 /** Opt-in gallery navigation, executed once on the native game update thread. */
 public final class PageProbe {
-    private static final boolean enabled = "1".equals(System.getenv("RGDS_R4_PAGE_PROBE"));
+    private static final boolean enabled = "1".equals(System.getenv("RGDS_R4_PAGE_PROBE")) || ReviewProbe.enabled;
     private static long nextPoll;
 
     public static void poll() {
+        ReviewProbe.tick();
         if (!enabled || System.nanoTime() < nextPoll) return;
         nextPoll = System.nanoTime() + 250_000_000L;
         Path directory = Path.of(System.getenv("RGDS_DIAGNOSTICS_DIR"));
@@ -25,7 +26,9 @@ public final class PageProbe {
             if (Files.size(request) > 64) throw new IllegalArgumentException("Oversized request");
             command = Files.readString(request).trim();
             Files.delete(request);
-            if (command.equals("map") || command.equals("deck") || command.equals("settings")) {
+            if (command.matches("u\\d\\d")) {
+                ReviewProbe.open(command);
+            } else if (command.equals("map") || command.equals("deck") || command.equals("settings")) {
                 if (CardCrawlGame.mode != CardCrawlGame.GameMode.GAMEPLAY ||
                         AbstractDungeon.player == null || AbstractDungeon.isScreenUp ||
                         AbstractDungeon.screen != AbstractDungeon.CurrentScreen.NONE ||
@@ -76,7 +79,9 @@ public final class PageProbe {
         }
         try {
             Path temp = directory.resolve("page-result.tmp");
-            Files.writeString(temp, command + "\n" + outcome + "\nsource=native-api-probe\nphysical_verified=false\n");
+            Files.writeString(temp, command + "\n" + outcome + "\nsource=" +
+                    (command.startsWith("u") ? "isolated-native-ui-specimen" : "native-api-probe") +
+                    "\nphysical_verified=false\n");
             Files.move(temp, directory.resolve("page-result.txt"), StandardCopyOption.REPLACE_EXISTING);
         } catch (Exception error) {
             System.err.println("[r4-probe] result write failed: " + error);

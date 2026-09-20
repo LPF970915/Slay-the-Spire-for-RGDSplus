@@ -45,7 +45,7 @@ def main():
     agent = (HERE/"java/rgds/r3/DualAgent.java").read_text()
     assert 'rgds.r3.DualRender.beginBackground($1)' in agent
     assert 'rgds.r3.DualRender.endBackground($1)' in agent
-    assert 'rgds.r3.DualRender.restoreBackgroundViewport()' in agent
+    assert 'rgds.r3.DualRender.restoreBackgroundViewport(this)' in agent
     with zipfile.ZipFile(HERE/"build/rgds-dual-r3.jar") as jar:
         assert all(n.startswith(("rgds/", "META-INF/")) for n in jar.namelist())
     print("R3 lifecycle, input capture, single-update routing and asset-free agent checks passed")

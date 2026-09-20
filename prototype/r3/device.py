@@ -25,12 +25,13 @@ KEYS = {"a": (1,304,1), "b": (1,305,1), "x": (1,307,1), "y": (1,306,1),
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=("deploy", "run", "status", "key", "shot", "stop",
-                                          "logs", "audit", "touch-probe", "perf", "page"))
-    parser.add_argument("--variant", choices=("r3", "r4"), default="r3")
+                                          "logs", "audit", "touch-probe", "perf", "page", "reset-review"))
+    parser.add_argument("--variant", choices=("r3", "r4", "review"), default="r3")
     parser.add_argument("--page-probe", action="store_true")
     parser.add_argument("--page", choices=("cards", "relics", "potions", "stats", "history",
                                          "custom", "character", "inputs", "patch", "credits",
                                          "map", "deck", "settings"))
+    parser.add_argument("--scene", choices=[f"u{i:02}" for i in range(1, 34)])
     parser.add_argument("--seconds", type=int, default=1200)
     parser.add_argument("--fps", type=int, choices=(24, 30, 60), default=30)
     parser.add_argument("--heap-mb", type=int, choices=(128, 140, 160, 180), default=140)
@@ -41,11 +42,15 @@ def main():
     parser.add_argument("--hold-seconds", type=float, default=.12)
     parser.add_argument("--name", default="native-ui")
     args = parser.parse_args()
-    APP = "/mnt/sdcard/Ports/SlayTheSpireDual" + args.variant.upper()
+    APP = "/mnt/sdcard/Ports/SlayTheSpireDual" + ("R4Review" if args.variant == "review" else args.variant.upper())
     ENTRY = "Slay the Spire R4 All Pages.sh" if args.variant == "r4" else "Slay the Spire R3 Native UI.sh"
-    if (args.page_probe or args.action == "page") and args.variant != "r4":
+    if (args.page_probe or args.action == "page") and args.variant not in ("r4", "review"):
         parser.error("Gallery probe is restricted to the separate R4 clone")
-    if args.action == "page" and not args.page:
+    if args.scene and args.variant != "review":
+        parser.error("Specimens require --variant review")
+    if args.action == "reset-review" and args.variant != "review":
+        parser.error("Only the disposable review clone can reset its fixtures")
+    if args.action == "page" and not (args.page or args.scene):
         parser.error("--page is required")
     if not .05 <= args.hold_seconds <= 3:
         parser.error("Hold must be between .05 and 3 seconds")
@@ -57,7 +62,8 @@ def main():
     client.connect("192.168.31.116", username="root", password=os.environ["RGDSPLUS_SSH_PASSWORD"],
                    timeout=12, look_for_keys=False, allow_agent=False)
     sftp = client.open_sftp()
-    output = ROOT / ("validation/r4-all-pages" if args.variant == "r4" else "validation/r3-native-ui")
+    output = ROOT / ("validation/r4-review" if args.variant == "review" else
+                     "validation/r4-all-pages" if args.variant == "r4" else "validation/r3-native-ui")
     output.mkdir(parents=True, exist_ok=True)
     def shell(command, timeout=60):
         _, out, err = client.exec_command(command, timeout=timeout)
@@ -124,7 +130,7 @@ for p in Path('/proc').glob('[0-9]*/cmdline'):
         assert str(app/'supervisor.py').encode() not in parts, 'R3 active'
         assert b'java' != Path(parts[0].decode(errors='replace')).name.encode(), 'Close game'
     except (FileNotFoundError, IndexError): pass
-source = Path({'/mnt/sdcard/Ports/SlayTheSpireDualR3' if args.variant == 'r4' else '/tmp/rgds-sts-silent-01'!r})
+source = Path({'/mnt/sdcard/Ports/SlayTheSpireDualR4' if args.variant == 'review' else '/mnt/sdcard/Ports/SlayTheSpireDualR3' if args.variant == 'r4' else '/tmp/rgds-sts-silent-01'!r})
 assert source.resolve() == source and (source/'saves/IRONCLAD.autosave').is_file()
 app.mkdir(exist_ok=True)
 (app/'logs').mkdir(exist_ok=True)
@@ -162,20 +168,40 @@ print('Private test clone ready; existing saves never overwritten')
                 data = path.read_bytes()
                 write(APP + "/" + name, data)
                 hashes[name] = hashlib.sha256(data).hexdigest()
-            write("/mnt/sdcard/Ports/" + ENTRY, (HERE/ENTRY).read_bytes())
-            write(APP+"/r3-manifest.json", json.dumps(dict(build="r4-layout-20260920-4",
+            if args.variant != "review":
+                write("/mnt/sdcard/Ports/" + ENTRY, (HERE/ENTRY).read_bytes())
+            write(APP+"/r3-manifest.json", json.dumps(dict(build="r4-layout-20260920-7",
                   renderer_base="r3-small-screen-20260920-3",
                   default_profile=dict(fps=30, initial_heap_mb=64, heap_mb=140,
                                        gc="Serial", diagnostic_io="ram"),
                   files=hashes, game_assets_in_adapter=False, touch_policy="capture-only")).encode())
             print(shell(f"chmod +x {APP}/game-launch.sh {APP}/run-java.sh {APP}/patch_safe.sh " +
-                        shlex.quote("/mnt/sdcard/Ports/" + ENTRY)))
+                        (shlex.quote("/mnt/sdcard/Ports/" + ENTRY) if args.variant != "review" else "")))
+        elif args.action == "reset-review":
+            print(remote(f"""
+import shutil, time
+from pathlib import Path
+app = Path({APP!r})
+assert app.name == 'SlayTheSpireDualR4Review' and app.resolve() == app
+for p in Path('/proc').glob('[0-9]*/comm'):
+    try: assert p.read_text().strip() != 'java', 'Close game before fixture reset'
+    except FileNotFoundError: pass
+archive = app/'logs'/('fixture-save-'+str(time.time_ns()))
+archive.mkdir()
+for name in ('saves', 'betaPreferences'):
+    dest = app/name
+    assert dest.resolve().parent == app
+    if dest.exists(): dest.rename(archive/name)
+    shutil.copytree(app.parent/'SlayTheSpireDualR4'/name, dest)
+print('Archived disposable specimen saves, copied unchanged R4 test baseline')
+"""))
         elif args.action == "run":
             print(shell(f"nohup python3 {APP}/supervisor.py --seconds {args.seconds} "
                         f"--fps {args.fps} --heap-mb {args.heap_mb} --gc {args.gc} "
                         f"--initial-heap-mb {args.initial_heap_mb} "
                         f"--diagnostic-io {args.diagnostic_io} "
                         f"{'--page-probe ' if args.page_probe else ''}"
+                        f"{'--review ' if args.variant == 'review' else ''}"
                         f">{APP}/logs/ssh.log 2>&1 </dev/null &"))
         elif args.action == "page":
             remote(guard)
@@ -183,7 +209,9 @@ print('Private test clone ready; existing saves never overwritten')
             result_path = directory + "/page-result.txt"
             try: sftp.remove(result_path)
             except FileNotFoundError: pass
-            write(directory + "/page.request", args.page.encode())
+            request = directory + "/page.request"
+            write(request + ".tmp", (args.scene or args.page).encode())
+            sftp.posix_rename(request + ".tmp", request)
             until = time.monotonic() + 30
             while time.monotonic() < until:
                 try:
@@ -364,7 +392,7 @@ for p in Path('/proc').glob('[0-9]*/comm'):
             result['processes'].append(dict(pid=int(p.parent.name),comm=comm,cmd=cmd,
                 stat=(p.parent/'stat').read_text(),status=(p.parent/'status').read_text()))
     except FileNotFoundError: pass
-for directory in ('SlayTheSpireDualR3','SlayTheSpireDualR4','SlayTheSpireGeometryP1','SlayTheSpireTouchR2'):
+for directory in ('SlayTheSpireDualR3','SlayTheSpireDualR4','SlayTheSpireDualR4Review','SlayTheSpireGeometryP1','SlayTheSpireTouchR2'):
     base=app.parent/directory
     path=base/'logs/session.lock'
     if path.exists():
