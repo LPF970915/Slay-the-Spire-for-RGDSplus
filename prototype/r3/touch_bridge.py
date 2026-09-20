@@ -1,6 +1,7 @@
 """Proven evdev capture for the native UI milestone; never submits game actions."""
 
 import json
+import os
 from pathlib import Path
 import signal
 import time
@@ -20,13 +21,14 @@ def heartbeat_focused(text, now):
 
 
 def main():
+    directory = Path(os.environ.get("RGDS_DIAGNOSTICS_DIR", str(ROOT / "logs")))
     requested = False
     def stop(*_):
         nonlocal requested
         requested = True
     for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         signal.signal(sig, stop)
-    trace = (ROOT / "logs" / f"touch-{time.time_ns()}.jsonl").open("w", buffering=1)
+    trace = (directory / f"touch-{time.time_ns()}.jsonl").open("w", buffering=1)
     def emit(event):
         trace.write(json.dumps(dict(t=time.monotonic(), policy="capture-only", **event)) + "\n")
     devices = Devices(emit=emit)
@@ -34,7 +36,7 @@ def main():
     next_report = 0
     try:
         while not requested:
-            heartbeat = ROOT / "logs/window-focus.txt"
+            heartbeat = directory / "window-focus.txt"
             try:
                 # Card-2 timestamps can have two-second granularity.
                 active = heartbeat_focused(heartbeat.read_text(), time.monotonic())
@@ -50,9 +52,9 @@ def main():
                     emit(dict(event="touch", action=action))
             if time.monotonic() >= next_report:
                 state = dict(policy="capture-only", physical_verified=False, **devices.diagnostics())
-                temp = ROOT / "logs/touch-state.tmp"
+                temp = directory / "touch-state.tmp"
                 temp.write_text(json.dumps(state))
-                temp.replace(ROOT / "logs/touch-state.json")
+                temp.replace(directory / "touch-state.json")
                 next_report = time.monotonic() + 1
             time.sleep(.008)
     finally:

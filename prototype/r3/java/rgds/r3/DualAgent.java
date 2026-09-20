@@ -63,7 +63,11 @@ public final class DualAgent {
                                     route(c, 1, false);
                             }
                         });
-                        target.getDeclaredMethod("update").insertBefore("rgds.r3.DualRender.logicTick();");
+                        render.insertBefore("rgds.r3.PerfProbe.renderBegin();");
+                        render.insertAfter("rgds.r3.PerfProbe.renderEnd();", true);
+                        CtMethod update = target.getDeclaredMethod("update");
+                        update.insertBefore("rgds.r3.DualRender.logicTick(); rgds.r3.PerfProbe.updateBegin();");
+                        update.insertAfter("rgds.r3.PerfProbe.updateEnd();", true);
                     } else if (simple.equals("AbstractDungeon")) {
                         target.getDeclaredMethod("render").instrument(new ExprEditor() {
                             public void edit(MethodCall c) throws CannotCompileException {

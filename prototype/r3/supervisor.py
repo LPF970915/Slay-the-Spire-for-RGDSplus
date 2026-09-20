@@ -14,6 +14,7 @@ from device_input import Devices
 from touch_mode import read_mode, enable_mode, restore_mode
 from session_runtime import identity, send, stop_child
 from rgds_exit import game_identity, terminate
+from diagnostic_io import create_runtime, archive_runtime
 
 ROOT = Path(__file__).resolve().parent
 
@@ -56,12 +57,18 @@ def recover(path):
     restore_mode(state.get("touch_previous"))
     for pid, birth in state["menus"]:
         send(pid, birth, signal.SIGCONT)
+    archive_runtime(ROOT, state.get("runtime"))
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--recover", type=Path)
     parser.add_argument("--seconds", type=float, default=1200)
+    parser.add_argument("--fps", type=int, choices=(24, 30, 60), default=30)
+    parser.add_argument("--heap-mb", type=int, choices=(128, 140, 160, 180), default=140)
+    parser.add_argument("--initial-heap-mb", type=int, choices=(32, 64, 128), default=64)
+    parser.add_argument("--gc", choices=("Serial", "G1", "Parallel"), default="Serial")
+    parser.add_argument("--diagnostic-io", choices=("card", "ram"), default="ram")
     args = parser.parse_args()
     if args.recover:
         recover(args.recover)
@@ -92,7 +99,8 @@ def main():
             pass
     log = (ROOT / "logs/supervisor.log").open("w", buffering=1)
     state = dict(owner=os.getpid(), birth=identity(os.getpid()), menus=menus,
-                 child=None, bridge=None, touch_previous=None)
+                 child=None, bridge=None, touch_previous=None,
+                 runtime=str(create_runtime(ROOT, args.diagnostic_io)))
     path = ROOT / "logs/recovery.json"
     def persist():
         temporary = ROOT / "logs/recovery.tmp"
@@ -121,14 +129,19 @@ def main():
         if not enable_mode(state["touch_previous"], log=message):
             raise RuntimeError("Explicit touch activation failed")
         env = os.environ.copy()
-        env.update(RGDS_DIAGNOSTICS_DIR=str(ROOT / "logs"),
-                   RGDS_CAPTURE_PATH=str(ROOT / "logs/capture.pam"),
-                   RGDS_CAPTURE_REQUEST=str(ROOT / "logs/capture.request"),
-                   RGDS_CAPTURE_FRAME="0", RGDS_FRAME_CSV=str(ROOT / f"logs/frames-{os.getpid()}.csv"))
+        env.update(RGDS_R3_FPS=str(args.fps), RGDS_R3_GC=args.gc,
+                   SLAYTHESPIRE_XMX=f"{args.heap_mb}M", RGDS_R3_PROFILE="1",
+                   RGDS_R3_XMS=str(args.initial_heap_mb))
+        message(f"[r3-profile] fps={args.fps} heap_mb={args.heap_mb} initial_heap_mb={args.initial_heap_mb} gc={args.gc} io={args.diagnostic_io}")
+        runtime = Path(state["runtime"])
+        env.update(RGDS_DIAGNOSTICS_DIR=str(runtime),
+                   RGDS_CAPTURE_PATH=str(runtime / "capture.pam"),
+                   RGDS_CAPTURE_REQUEST=str(runtime / "capture.request"),
+                   RGDS_CAPTURE_FRAME="0", RGDS_FRAME_CSV=str(runtime / f"frames-{os.getpid()}.csv"))
         for key in ("LD_PRELOAD", "WRAPPED_PRELOAD"):
             env.pop(key, None)
         bridge = subprocess.Popen([sys.executable, str(ROOT / "touch_bridge.py")],
-                                  stdout=log, stderr=log, start_new_session=True,
+                                  env=env, stdout=log, stderr=log, start_new_session=True,
                                   pass_fds=inherited_locks)
         state["bridge"] = [bridge.pid, identity(bridge.pid)]
         persist()
@@ -161,6 +174,7 @@ def main():
         if guardian:
             guardian.terminate()
             guardian.wait()
+        archive_runtime(ROOT, state.get("runtime"))
         log.close()
         for lock in locks:
             lock.close()
