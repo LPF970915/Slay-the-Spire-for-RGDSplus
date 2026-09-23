@@ -18,7 +18,7 @@ def main():
     client = paramiko.SSHClient()
     client.load_system_host_keys()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect("192.168.31.116", username="root",
+    client.connect(os.environ["RGDSPLUS_SSH_HOST"], username="root",
                    password=os.environ["RGDSPLUS_SSH_PASSWORD"], timeout=10,
                    look_for_keys=False, allow_agent=False)
     output = ROOT / "validation/r2-probe"

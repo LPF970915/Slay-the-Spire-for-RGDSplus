@@ -6,6 +6,8 @@ import com.megacrit.cardcrawl.dungeons.AbstractDungeon;
 import com.megacrit.cardcrawl.cards.AbstractCard;
 import com.megacrit.cardcrawl.cards.CardGroup;
 import com.megacrit.cardcrawl.rooms.*;
+import com.megacrit.cardcrawl.monsters.MonsterGroup;
+import com.megacrit.cardcrawl.monsters.exordium.LouseNormal;
 import com.megacrit.cardcrawl.map.MapRoomNode;
 import com.megacrit.cardcrawl.helpers.*;
 import com.megacrit.cardcrawl.screens.mainMenu.MainMenuScreen;
@@ -69,6 +71,23 @@ public final class ReviewProbe {
             baseline = AbstractDungeon.getCurrMapNode();
             playerX = AbstractDungeon.player.drawX; playerY = AbstractDungeon.player.drawY;
             baselineHand.addAll(AbstractDungeon.player.hand.group);
+            if (baselineHand.isEmpty()) {
+                // The disposable baseline can resume at a campfire or map with
+                // no live hand; keep selection-page specimens actionable.
+                baselineHand.addAll(cards());
+            }
+            if (baseline.room == null || baseline.room.monsters == null ||
+                    baseline.room.monsters.monsters.isEmpty()) {
+                MonsterRoom specimen = new MonsterRoom();
+                MonsterGroup group = new MonsterGroup(new LouseNormal(420.0f, 0.0f));
+                // setMonster stores the group but does not roll the first move.
+                group.init();
+                specimen.setMonster(group);
+                baseline.room = specimen;
+                AbstractDungeon.currMapNode = baseline;
+                AbstractDungeon.scene.nextRoom(specimen);
+                specimen.onPlayerEntry();
+            }
         }
         scene = "";
         CardCrawlGame.cardPopup.close();
@@ -81,6 +100,7 @@ public final class ReviewProbe {
         AbstractDungeon.currMapNode = baseline;
         AbstractDungeon.rs = AbstractDungeon.RenderScene.NORMAL;
         AbstractDungeon.scene.nextRoom(baseline.room);
+        AbstractDungeon.topPanel.unhoverHitboxes();
         AbstractDungeon.overlayMenu.hideBlackScreen();
         ((com.badlogic.gdx.graphics.Color)DualRender.get(
                 AbstractDungeon.overlayMenu, "blackScreenColor")).a = 0;
@@ -133,7 +153,10 @@ public final class ReviewProbe {
                 set(CardCrawlGame.dungeonTransitionScreen, "popup", null);
                 break;
             case "u02": break;
-            case "u03": menu.saveSlotScreen.open("RGDS"); break;
+            case "u03":
+                menu.screen = MainMenuScreen.CurScreen.SAVE_SLOT;
+                menu.saveSlotScreen.open("RGDS");
+                break;
             case "u04": menu.charSelectScreen.open(false); break;
             case "u05": menu.customModeScreen.open(); break;
             case "u06":

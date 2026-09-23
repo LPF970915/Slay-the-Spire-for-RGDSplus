@@ -1,3 +1,3 @@
 Manifest-Version: 1.0
 Premain-Class: rgds.r3.DualAgent
-
+Can-Retransform-Classes: true

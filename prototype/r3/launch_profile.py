@@ -17,6 +17,7 @@ def configure(text):
                         "printf '1024\\n768\\n%s\\nfalse\\ntrue\\nfalse\\n' \"${RGDS_R3_FPS:-30}\"")
     text = replace_once(text, '    "-XX:+UseSerialGC"',
                         '    "-XX:+Use${RGDS_R3_GC:-Serial}GC"\n'
+                        '    "-XX:TieredStopAtLevel=${RGDS_R4_JIT_TIER:-4}"\n'
                         '    "-Xlog:gc*,safepoint:file=$SESSION.gc.log:uptimemillis,level,tags:filecount=2,filesize=2M"')
     text = replace_once(text, '    "-Xms128M"', '    "-Xms${RGDS_R3_XMS:-64}M"')
     return text

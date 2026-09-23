@@ -7,6 +7,7 @@ import java.security.ProtectionDomain;
 import javassist.*;
 import javassist.expr.ExprEditor;
 import javassist.expr.MethodCall;
+import javassist.expr.FieldAccess;
 
 /** Game-free method routing. The original game and stable adapter are not edited. */
 public final class DualAgent {
@@ -15,6 +16,19 @@ public final class DualAgent {
             java.util.Arrays.asList("MenuButton", "MenuCancelButton", "CancelButton", "ConfirmButton",
                     "GridSelectConfirmButton", "ReturnToMenuButton", "UnlockConfirmButton",
                     "CardSelectConfirmButton", "SkipCardButton"));
+    public static final java.util.Map<String, String> COMBAT_EFFECTS = new java.util.LinkedHashMap<>();
+    static {
+        COMBAT_EFFECTS.put("com/megacrit/cardcrawl/vfx/GameDeckGlowEffect", "draw");
+        COMBAT_EFFECTS.put("com/megacrit/cardcrawl/vfx/DiscardGlowEffect", "discard");
+        COMBAT_EFFECTS.put("com/megacrit/cardcrawl/vfx/RefreshEnergyEffect", "energy");
+        COMBAT_EFFECTS.put("com/megacrit/cardcrawl/vfx/EndTurnGlowEffect", "end");
+        COMBAT_EFFECTS.put("com/megacrit/cardcrawl/vfx/EndTurnLongPressBarFlashEffect", "end");
+        COMBAT_EFFECTS.put("com/megacrit/cardcrawl/vfx/ExhaustPileParticle", "exhaust");
+        COMBAT_EFFECTS.put("com/megacrit/cardcrawl/vfx/combat/DeckPoofParticle", "lower");
+        COMBAT_EFFECTS.put("com/megacrit/cardcrawl/vfx/CardTrailEffect", "native");
+        COMBAT_EFFECTS.put("com/megacrit/cardcrawl/vfx/cardManip/CardGlowBorder", "hand");
+        COMBAT_EFFECTS.put("com/megacrit/cardcrawl/vfx/cardManip/CardFlashVfx", "hand");
+    }
 
     public static void premain(String args, Instrumentation instrumentation) {
         instrumentation.addTransformer(new ClassFileTransformer() {
@@ -22,22 +36,64 @@ public final class DualAgent {
                                     ProtectionDomain domain, byte[] bytes) {
                 if (!name.startsWith(CORE) &&
                     !name.equals("com/badlogic/gdx/backends/lwjgl/LwjglApplicationConfiguration") &&
+                    !name.equals("com/badlogic/gdx/backends/lwjgl/LwjglInput") &&
                     !name.equals("com/badlogic/gdx/graphics/g2d/SpriteBatch"))
                     return null;
                 String simple = name.substring(name.lastIndexOf('/') + 1);
                 boolean registered = ScreenRoutes.id(name.replace('/', '.')) != null;
-                if (!registered && !SMALL_CONTROLS.contains(simple) && !java.util.Arrays.asList("CardCrawlGame", "AbstractDungeon", "AbstractPlayer",
+                if (!registered && !COMBAT_EFFECTS.containsKey(name) && !SMALL_CONTROLS.contains(simple) && !java.util.Arrays.asList("CardCrawlGame", "AbstractDungeon", "AbstractPlayer",
                         "MainMenuScreen", "LwjglApplicationConfiguration", "OverlayMenu",
                         "AbstractMonster", "AbstractCreature", "Hitbox", "SpriteBatch",
                         "CharacterOption", "EventRoom", "TitleBackground", "DungeonMap",
                         "MapCircleEffect", "CardGroup", "StoreRelic", "StorePotion", "Metrics",
-                        "InfiniteSpeechBubble", "SpeechTextEffect").contains(simple)) return null;
+                        "InfiniteSpeechBubble", "SpeechTextEffect", "ShopSpeechBubble",
+                        "InputHelper", "LwjglInput",
+                        "GameCursor", "AbstractCard", "Soul", "SaveSlot", "ProceedButton").contains(simple)) return null;
                 CtClass target = null;
                 try {
                     ClassPool pool = new ClassPool(true);
                     pool.insertClassPath(new LoaderClassPath(loader));
                     target = pool.makeClass(new ByteArrayInputStream(bytes));
-                    if (simple.equals("Metrics")) {
+                    if (COMBAT_EFFECTS.containsKey(name)) {
+                        String kind = COMBAT_EFFECTS.get(name);
+                        if (simple.equals("CardTrailEffect"))
+                            target.getDeclaredMethod("init").insertAfter("rgds.r3.CombatEffects.trail(this);");
+                        if (simple.equals("DeckPoofParticle"))
+                            for (CtConstructor ctor : target.getDeclaredConstructors())
+                                ctor.insertAfter("rgds.r3.CombatEffects.particle(this,$1);");
+                        for (CtMethod method : target.getDeclaredMethods()) {
+                            if (!method.getName().equals("render")) continue;
+                            if (simple.equals("CardTrailEffect"))
+                                method.insertBefore("if (rgds.r3.CombatEffects.hidden(this)) return;");
+                            method.insertBefore("rgds.r3.CombatEffects.begin($1,this,\"" + kind + "\");");
+                            method.insertAfter("rgds.r3.DualRender.pop($1);", true);
+                        }
+                    } else if (simple.equals("GameCursor")) {
+                        target.getDeclaredMethod("render").insertBefore(
+                                "if (rgds.r3.CombatEffects.cursor()) return;");
+                    } else if (simple.equals("AbstractCard")) {
+                        target.getDeclaredMethod("isHoveredInHand").insertBefore(
+                                "if (rgds.r3.TouchInput.ownsPointer() && "
+                                + "com.megacrit.cardcrawl.dungeons.AbstractDungeon.screen == "
+                                + "com.megacrit.cardcrawl.dungeons.AbstractDungeon.CurrentScreen.HAND_SELECT) "
+                                + "return rgds.r3.DualRender.touchHitAt((float)rgds.r3.TouchInput.state.x,"
+                                + "(float)rgds.r3.TouchInput.state.y) == hb;");
+                        CtMethod render = target.getDeclaredMethod("render", new CtClass[]{
+                                pool.get("com.badlogic.gdx.graphics.g2d.SpriteBatch"), CtClass.booleanType});
+                        render.insertBefore("if (rgds.r3.CardFlight.hide(this)) return;");
+                        target.getDeclaredMethod("renderHoverShadow").insertBefore(
+                                "if (rgds.r3.CardFlight.hide(this)) return;");
+                        target.getDeclaredMethod("renderOuterGlow").insertBefore(
+                                "if (rgds.r3.CardFlight.hide(this)) return;");
+                        target.getDeclaredMethod("isOnScreen").insertBefore(
+                                "if (rgds.r3.CardFlight.visual(this)) return true;");
+                    } else if (simple.equals("Soul")) {
+                        target.getDeclaredMethod("update").insertBefore("rgds.r3.CombatEffects.soulBegin(this);");
+                        target.getDeclaredMethod("update").insertAfter("rgds.r3.CombatEffects.soulEnd();", true);
+                        target.getDeclaredMethod("render").insertBefore(
+                                "rgds.r3.CombatEffects.begin($1,this,\"soul\");");
+                        target.getDeclaredMethod("render").insertAfter("rgds.r3.DualRender.pop($1);", true);
+                    } else if (simple.equals("Metrics")) {
                         target.getDeclaredMethod("run").insertBefore(
                                 "if (rgds.r3.ReviewProbe.enabled) return;");
                     } else if (simple.equals("SpriteBatch")) {
@@ -52,7 +108,54 @@ public final class DualAgent {
                             }
                         });
                     } else if (simple.equals("LwjglApplicationConfiguration")) {
-                        target.makeClassInitializer().insertAfter("disableAudio = true;");
+                        target.makeClassInitializer().insertAfter(
+                                "disableAudio = \"1\".equals(System.getenv(\"RGDS_STS_SILENT\"));");
+                    } else if (simple.equals("LwjglInput")) {
+                        for (CtMethod method : target.getDeclaredMethods()) {
+                            String getter = method.getName();
+                            if (getter.equals("getX") || getter.equals("getY") ||
+                                    getter.equals("getDeltaX") || getter.equals("getDeltaY")) {
+                                String field = getter.equals("getX") ? "x" : getter.equals("getY") ? "y" :
+                                        getter.equals("getDeltaX") ? "dx" : "dy";
+                                method.insertBefore("if (rgds.r3.TouchInput.ownsPointer()) return rgds.r3.TouchInput.state." + field + ";");
+                            } else if (getter.equals("isButtonPressed")) {
+                                method.insertBefore("if (rgds.r3.TouchInput.enabled) return $1 == 0 && rgds.r3.TouchInput.state.down;");
+                            } else if (getter.equals("isTouched")) {
+                                method.insertBefore("if (rgds.r3.TouchInput.enabled) return rgds.r3.TouchInput.state.down;");
+                            } else if (getter.equals("justTouched")) {
+                                method.insertBefore("if (rgds.r3.TouchInput.enabled) return rgds.r3.TouchInput.state.justDown;");
+                            } else if (getter.equals("setCursorPosition")) {
+                                method.insertBefore("if (rgds.r3.TouchInput.ownsPointer()) return;");
+                            }
+                        }
+                    } else if (simple.equals("InputHelper")) {
+                        target.instrument(new ExprEditor() {
+                            public void edit(FieldAccess field) throws CannotCompileException {
+                                if (field.isWriter() && field.getClassName().endsWith(".Settings") &&
+                                        field.getFieldName().equals("isControllerMode"))
+                                    field.replace("{ $proceed($1 && !rgds.r3.TouchInput.ownsPointer()); }");
+                            }
+                        });
+                        target.getDeclaredMethod("updateFirst").insertBefore(
+                                "if (rgds.r3.TouchInput.enabled) {"
+                                + "if (rgds.r3.TouchInput.poll()) { isPrevMouseDown = false;"
+                                + "isMouseDown = false; justClickedLeft = false; justReleasedClickLeft = false; }"
+                                + "if (rgds.r3.TouchInput.state.justDown &&"
+                                + " com.megacrit.cardcrawl.core.Settings.isControllerMode) leaveControllerMode();"
+                                + "touchDown = false; touchUp = false; }");
+                        target.getDeclaredMethod("updateFirst").insertAfter(
+                                "if (rgds.r3.TouchInput.ownsPointer()) {"
+                                + "mX = rgds.r3.TouchInput.state.x;"
+                                + "mY = 768 - rgds.r3.TouchInput.state.y;"
+                                + "justClickedLeft = rgds.r3.TouchInput.state.justDown;"
+                                + "justReleasedClickLeft = rgds.r3.TouchInput.state.justUp;"
+                                + "isMouseDown = rgds.r3.TouchInput.state.down; }"
+                                + "else { justClickedLeft = false; justReleasedClickLeft = false; }"
+                                + "if (com.megacrit.cardcrawl.core.CardCrawlGame.mode =="
+                                + " com.megacrit.cardcrawl.core.CardCrawlGame.GameMode.CHAR_SELECT"
+                                + " && com.megacrit.cardcrawl.helpers.controller.CInputActionSet.cancel.isJustPressed()"
+                                + " && !com.megacrit.cardcrawl.core.CardCrawlGame.mainMenuScreen.abandonPopup.shown)"
+                                + " pressedEscape = true;");
                     } else if (simple.equals("CardCrawlGame")) {
                         CtMethod render = target.getDeclaredMethod("render");
                         render.instrument(new ExprEditor() {
@@ -100,15 +203,21 @@ public final class DualAgent {
                                 } else if (method.equals("renderAboveTopPanel") && owner.endsWith(".AbstractRoom")) {
                                     routeExpression(c, "rgds.r3.DualRender.roomTarget($0)");
                                 } else if (method.equals("renderBlackScreen")) {
-                                    mirrorCall(c, 0);
+                                    c.replace("{ rgds.r3.DualRender.dungeonOverlay($1);"
+                                        + "try { $proceed($$); } finally {"
+                                        + "rgds.r3.DualRender.endBackground($1);"
+                                        + "rgds.r3.DualRender.pop($1); } }");
                                 } else if (method.equals("render") &&
                                         (owner.endsWith(".OverlayMenu") ||
-                                         owner.endsWith(".CancelButton"))) {
+                                         owner.endsWith(".CancelButton") ||
+                                         owner.endsWith(".DynamicBanner"))) {
                                     route(c, 1, false);
                                 }
                             }
                         });
                     } else if (simple.equals("Hitbox")) {
+                        target.getDeclaredMethod("render").insertBefore(
+                                "rgds.r3.DualRender.recordTouchHit(this, $1);");
                         target.getDeclaredMethod("update", new CtClass[0]).insertBefore(
                                 "rgds.r3.DualRender.pointerBegin(this);");
                         target.getDeclaredMethod("update", new CtClass[0]).insertAfter(
@@ -129,11 +238,25 @@ public final class DualAgent {
                         });
                     } else if (simple.equals("AbstractCreature")) {
                         info(target.getDeclaredMethod("renderHealth"), "health");
+                        for (CtMethod method : target.getDeclaredMethods()) {
+                            if (!method.getName().equals("renderReticle")) continue;
+                            method.insertBefore("rgds.r3.CombatEffects.reticle($1);");
+                            method.insertAfter("rgds.r3.DualRender.pop($1);", true);
+                        }
                     } else if (simple.equals("AbstractMonster")) {
                         for (String method : new String[]{"renderIntent", "renderDamageRange",
                                 "renderIntentVfxBehind", "renderIntentVfxAfter"})
                             info(target.getDeclaredMethod(method), "intent");
                     } else if (simple.equals("AbstractPlayer")) {
+                        target.getDeclaredMethod("updateControllerInput").insertBefore(
+                                "if (rgds.r3.CombatTouch.neutralHand(this)) return;");
+                        target.getDeclaredMethod("useCard").insertAfter("rgds.r3.CardFlight.used($1);");
+                        target.getDeclaredMethod("updateInput").insertBefore(
+                                "{ int action = rgds.r3.CombatTouch.update(this);"
+                                + "if (action != 0) {"
+                                + "hoveredMonster = rgds.r3.CombatTouch.target;"
+                                + "if (action == 2) { playCard();"
+                                + "rgds.r3.CombatTouch.committed(); releaseCard(); } return; } }");
                         target.getDeclaredMethod("renderHand").insertBefore(
                                 "rgds.r3.DualRender.push($1, 1, true);");
                         target.getDeclaredMethod("renderHand").insertAfter(
@@ -177,11 +300,55 @@ public final class DualAgent {
                     if (target != null) target.detach();
                 }
             }
-        });
+        }, true);
     }
 
     private static void pageRouting(CtClass target, String simple) throws Exception {
-        if (SMALL_CONTROLS.contains(simple)) {
+        if (simple.equals("MultiPageFtue")) {
+            target.getDeclaredMethod("update").insertBefore("rgds.r3.TutorialTouch.update(this);");
+            target.getDeclaredMethod("update").instrument(new ExprEditor() {
+                public void edit(FieldAccess field) throws CannotCompileException {
+                    if (field.isReader() && field.getClassName().endsWith(".InputHelper") &&
+                            field.getFieldName().equals("justClickedLeft"))
+                        field.replace("{ $_ = rgds.r3.TutorialTouch.click($proceed()); }");
+                }
+            });
+        } else if (simple.equals("ProceedButton")) {
+            CtMethod update = target.getDeclaredMethod("update");
+            update.instrument(new ExprEditor() {
+                public void edit(FieldAccess field) throws CannotCompileException {
+                    if (field.isReader() && field.getClassName().endsWith(".Hitbox") &&
+                            field.getFieldName().equals("clicked"))
+                        field.replace("{ $_ = !rgds.r3.TutorialTouch.active() && $proceed(); }");
+                }
+                public void edit(MethodCall call) throws CannotCompileException {
+                    if (call.getClassName().endsWith(".CInputAction") &&
+                            call.getMethodName().equals("isJustPressed"))
+                        call.replace("{ $_ = !rgds.r3.TutorialTouch.active() && $proceed($$); }");
+                }
+            });
+            update.insertAfter("if (rgds.r3.TutorialTouch.active()) hb.clickStarted = hb.clicked = false;");
+        } else if (simple.equals("SaveSlot")) {
+            target.getDeclaredMethod("update").insertBefore(
+                    "if (rgds.r3.SaveSlotTouch.update(this)) return;");
+        } else if (simple.equals("RenamePopup") || simple.equals("SeedPanel")) {
+            CtMethod open = simple.equals("RenamePopup") ? target.getDeclaredMethod("open") :
+                    target.getDeclaredMethod("show", new CtClass[0]);
+            open.insertAfter("rgds.r3.TextKeyboard.open(this);");
+            target.getDeclaredMethod("update").insertBefore(
+                    "if (rgds.r3.TextKeyboard.update(this)) return;");
+            target.getDeclaredMethod("render").insertBefore(
+                    "if (rgds.r3.TextKeyboard.owns(this)) return;");
+            for (String name : simple.equals("RenamePopup") ?
+                    new String[]{"confirm", "cancel"} : new String[]{"close"})
+                target.getDeclaredMethod(name).insertAfter(
+                        "if (!shown) rgds.r3.TextKeyboard.closed(this);");
+        } else if (simple.equals("PotionPopUp")) {
+            target.getDeclaredMethod("updateTargetMode").insertBefore(
+                    "if (rgds.r3.UpperInteraction.guardTarget(this)) return;");
+        } else if (SMALL_CONTROLS.contains(simple)) {
+            target.getDeclaredMethod("update").insertAfter(
+                    "rgds.r3.DualRender.nativeButtonRelease(this.hb);");
             target.getDeclaredMethod("render").insertBefore(
                     "rgds.r3.DualRender.smallControl($1,this," + simple.equals("MenuButton") + ");");
             target.getDeclaredMethod("render").insertAfter("rgds.r3.DualRender.pop($1);", true);
@@ -189,6 +356,13 @@ public final class DualAgent {
             target.getDeclaredMethod("render").insertBefore("rgds.r3.DualRender.narration($1);");
             target.getDeclaredMethod("render").insertAfter("rgds.r3.DualRender.pop($1);", true);
         } else if (simple.equals("DungeonMap")) {
+            target.getDeclaredMethod("update").instrument(new ExprEditor() {
+                public void edit(FieldAccess field) throws CannotCompileException {
+                    if (field.isReader() && field.getClassName().endsWith(".InputHelper") &&
+                            field.getFieldName().equals("justClickedLeft"))
+                        field.replace("{ $_ = rgds.r3.MapTouch.bossClick($proceed()); }");
+                }
+            });
             for (String name : new String[]{"renderNormalMap", "renderFinalActMap"})
                 target.getDeclaredMethod(name).instrument(new ExprEditor() {
                     public void edit(MethodCall c) throws CannotCompileException {
@@ -197,12 +371,31 @@ public final class DualAgent {
                     }
                 });
         } else if (simple.equals("DungeonMapScreen")) {
+            target.getDeclaredMethod("update").insertBefore(
+                    "rgds.r3.MapTouch.begin(this,scrollWaitTimer);");
+            target.getDeclaredMethod("updateMouse").insertBefore(
+                    "if (rgds.r3.MapTouch.controls()) return;");
+            target.getDeclaredMethod("updateControllerInput").insertBefore(
+                    "if (rgds.r3.MapTouch.controls()) return;");
+            target.getDeclaredMethod("updateYOffset").insertBefore(
+                    "if (rgds.r3.MapTouch.controls()) { grabbedScreen = false;"
+                    + "targetOffsetY = rgds.r3.MapTouch.scroll(targetOffsetY); updateAnimation(); return; }");
+            for (String method : new String[]{"open", "close", "closeInstantly"})
+                target.getDeclaredMethod(method).insertBefore("rgds.r3.MapTouch.cancel();");
             target.getDeclaredMethod("render").instrument(new ExprEditor() {
                 public void edit(MethodCall c) throws CannotCompileException {
                     if (c.getClassName().endsWith(".FontHelper") ||
                             c.getMethodName().equals("renderControllerUi")) route(c, 1, false);
                 }
             });
+        } else if (simple.equals("CreditsScreen") || simple.equals("LeaderboardScreen")) {
+            // These native menu pages close on Escape, while B only exposes
+            // the controller cancel action on the console input path.
+            String close = simple.equals("CreditsScreen") ? "close()" : "hide()";
+            target.getDeclaredMethod("update").insertBefore(
+                    "if (com.megacrit.cardcrawl.helpers.controller.CInputActionSet.cancel.isJustPressed()) {"
+                    + "com.megacrit.cardcrawl.helpers.controller.CInputActionSet.cancel.unpress();"
+                    + close + "; return; }");
         } else if (simple.equals("MapCircleEffect")) {
             target.getDeclaredMethod("render").insertBefore("rgds.r3.DualRender.mapEffect($1);");
             target.getDeclaredMethod("render").insertAfter("rgds.r3.DualRender.endPage($1,true);", true);
@@ -246,6 +439,9 @@ public final class DualAgent {
                         route(c, 0, false);
                 }
             });
+        } else if (simple.equals("NeowEvent")) {
+            for (CtConstructor constructor : target.getDeclaredConstructors())
+                constructor.insertAfter("rgds.r3.StartupWarmup.attachNeow(this);");
         } else if (simple.equals("CharacterSelectScreen")) {
             target.getDeclaredMethod("render").instrument(new ExprEditor() {
                 public void edit(MethodCall c) throws CannotCompileException {
@@ -263,22 +459,40 @@ public final class DualAgent {
                 }
             });
         } else if (simple.equals("Merchant")) {
+            for (CtConstructor constructor : target.getDeclaredConstructors())
+                constructor.insertAfter("rgds.r3.StartupWarmup.attachMerchant(this);");
             target.getDeclaredMethod("render").instrument(new ExprEditor() {
                 public void edit(MethodCall c) throws CannotCompileException {
-                    // Keep a native lower-screen entry at its existing hitbox.
-                    if (c.getClassName().endsWith(".AnimatedNpc")) mirrorCall(c, 1);
+                    // Shop inventory stays on the lower panel, but the merchant
+                    // character is an upper-panel scene actor.
+                    if (c.getClassName().endsWith(".AnimatedNpc")) route(c, 0, false);
                 }
             });
+        } else if (simple.equals("ShopSpeechBubble") || simple.equals("SpeechTextEffect")) {
+            // Shop dialogue is part of the merchant performance, not inventory.
+            target.getDeclaredMethod("render").insertBefore("rgds.r3.DualRender.push($1,0,false);");
+            target.getDeclaredMethod("render").insertAfter("rgds.r3.DualRender.pop($1);", true);
         } else if (simple.equals("GenericEventDialog") || simple.equals("RoomEventDialog")) {
             target.getDeclaredMethod("render").instrument(new ExprEditor() {
                 public void edit(MethodCall c) throws CannotCompileException {
                     String owner = c.getClassName(), method = c.getMethodName();
                     if (owner.endsWith(".LargeDialogOptionButton") && method.equals("render"))
-                        c.replace("{ rgds.r3.DualRender.eventOption($1,$0);"
+                        c.replace("{ rgds.r3.DualRender.eventOption($1,$0,this.optionList.size());"
                                 + "try { $proceed($$); } finally { rgds.r3.DualRender.pop($1); } }");
                 }
             });
         } else if (simple.equals("SingleCardViewPopup") || simple.equals("SingleRelicViewPopup")) {
+            target.getDeclaredMethod("update").insertBefore(
+                    "if (rgds.r3.DetailControls.update(this)) return;");
+            target.getDeclaredMethod("updateInput").instrument(new ExprEditor() {
+                public void edit(FieldAccess field) throws CannotCompileException {
+                    if (field.isReader() && field.getClassName().endsWith(".InputHelper") &&
+                            (field.getFieldName().equals("justClickedLeft") ||
+                             field.getFieldName().equals("justReleasedClickLeft")))
+                        field.replace("{ $_ = rgds.r3.DetailControls.outsideClick(this,$proceed(),"
+                                + field.getFieldName().equals("justReleasedClickLeft") + "); }");
+                }
+            });
             target.getDeclaredMethod("render").instrument(new ExprEditor() {
                 public void edit(MethodCall c) throws CannotCompileException {
                     String method = c.getMethodName();

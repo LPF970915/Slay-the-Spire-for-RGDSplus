@@ -19,7 +19,7 @@ def main() -> None:
     }
     for path in ROOT.rglob("*"):
         if path.is_file() and path.suffix.lower() in {".jar", ".exe", ".love"}:
-            if path == ROOT / "prototype/r3/build/rgds-dual-r3.jar":
+            if path.name == "rgds-dual-r3.jar":
                 with zipfile.ZipFile(path) as adapter:
                     assert all(n.startswith(("META-INF/", "rgds/"))
                                for n in adapter.namelist())

@@ -25,7 +25,7 @@ KEYS = {
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--host", default="192.168.31.116")
+    parser.add_argument("--host", default=os.getenv("RGDSPLUS_SSH_HOST"))
     parser.add_argument("--app", default="/tmp/rgds-sts-silent-01")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("status")

@@ -7,7 +7,7 @@ import tempfile
 
 PREFIX = "rgds-sts-r3-"
 ALLOWED = re.compile(r"(state\.xml|dual-state\.xml|window-focus\.txt|touch-state\.json|"
-                     r"touch-\d+\.jsonl|frames-\d+\.csv)")
+                     r"touch-\d+\.jsonl|frames-\d+\.csv|page-result\.txt)")
 
 
 def create_runtime(root, mode):
@@ -33,8 +33,10 @@ def archive_runtime(root, runtime, tmp_root=Path("/tmp")):
             if source.stat().st_size > 16 * 1024 * 1024:
                 raise ValueError("Diagnostic file exceeded archival bound")
         elif source.name not in ("state.xml.tmp", "dual-state.xml.tmp", "window-focus.tmp",
-                                  "touch-state.tmp", "capture.request", "capture.pam"):
-            raise ValueError("Unexpected diagnostic filename")
+                                  "touch-state.tmp", "touch-port.txt", "touch-port.tmp",
+                                  "capture.request", "capture.pam", "page.request",
+                                  "page.request.tmp", "page-result.tmp"):
+            raise ValueError("Unexpected diagnostic filename: " + source.name)
     for source in sources:
         if ALLOWED.fullmatch(source.name):
             shutil.copy2(source, root / "logs" / source.name)

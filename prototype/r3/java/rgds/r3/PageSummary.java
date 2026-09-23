@@ -10,7 +10,6 @@ import com.megacrit.cardcrawl.helpers.ImageMaster;
 import com.megacrit.cardcrawl.screens.custom.CustomMod;
 import com.megacrit.cardcrawl.screens.custom.CustomModeCharacterButton;
 import com.megacrit.cardcrawl.screens.mainMenu.SaveSlot;
-import com.megacrit.cardcrawl.rewards.RewardItem;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -35,9 +34,6 @@ public final class PageSummary {
                     CustomMod mod = (CustomMod)value;
                     if (mod.selected) lines.add(mod.name);
                 }
-        } else if (page.equals("U17")) {
-            for (RewardItem reward : AbstractDungeon.combatRewardScreen.rewards)
-                if (!reward.isDone && !reward.ignoreReward) lines.add(reward.text);
         } else if (page.equals("U22")) {
             Object ui = DualRender.get(AbstractDungeon.getCurrRoom(), "campfireUI");
             Object buttons = DualRender.get(ui, "buttons");

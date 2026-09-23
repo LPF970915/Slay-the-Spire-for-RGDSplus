@@ -1,4 +1,4 @@
-"""Proven evdev capture for the native UI milestone; never submits game actions."""
+"""Proven evdev lifecycle with opt-in, ordered native lower-screen pointer input."""
 
 import json
 import os
@@ -7,6 +7,7 @@ import signal
 import time
 
 from device_input import Devices
+from touch_transport import TouchTransport
 
 ROOT = Path(__file__).resolve().parent
 
@@ -22,6 +23,9 @@ def heartbeat_focused(text, now):
 
 def main():
     directory = Path(os.environ.get("RGDS_DIAGNOSTICS_DIR", str(ROOT / "logs")))
+    live = os.environ.get("RGDS_R4_TOUCH_LIVE") == "1"
+    policy = "native-lower-pointer" if live else "capture-only"
+    transport = TouchTransport(directory) if live else None
     requested = False
     def stop(*_):
         nonlocal requested
@@ -30,7 +34,7 @@ def main():
         signal.signal(sig, stop)
     trace = (directory / f"touch-{time.time_ns()}.jsonl").open("w", buffering=1)
     def emit(event):
-        trace.write(json.dumps(dict(t=time.monotonic(), policy="capture-only", **event)) + "\n")
+        trace.write(json.dumps(dict(t=time.monotonic(), policy=policy, **event)) + "\n")
     devices = Devices(emit=emit)
     focused = False
     next_report = 0
@@ -46,12 +50,20 @@ def main():
                 focused = active
                 devices.cancel_touch()
                 devices.set_focus(focused)
+                if transport:
+                    transport.cancel()
                 emit(dict(event="focus", focused=focused))
-            for action in devices.poll(time.monotonic()):
+            actions = devices.poll(time.monotonic())
+            if transport:
+                transport.tick()
+                transport.actions(actions, focused)
+            for action in actions:
                 if action[0] in ("down", "move", "up", "cancel"):
                     emit(dict(event="touch", action=action))
             if time.monotonic() >= next_report:
-                state = dict(policy="capture-only", physical_verified=False, **devices.diagnostics())
+                state = dict(policy=policy, physical_verified=False,
+                             connected=bool(transport and transport.socket),
+                             sent=transport.sent if transport else 0, **devices.diagnostics())
                 temp = directory / "touch-state.tmp"
                 temp.write_text(json.dumps(state))
                 temp.replace(directory / "touch-state.json")
@@ -59,6 +71,9 @@ def main():
             time.sleep(.008)
     finally:
         devices.cancel_touch()
+        if transport:
+            transport.cancel()
+            transport.close()
         devices.close()
         trace.close()
 

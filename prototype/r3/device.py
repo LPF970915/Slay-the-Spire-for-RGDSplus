@@ -24,8 +24,9 @@ KEYS = {"a": (1,304,1), "b": (1,305,1), "x": (1,307,1), "y": (1,306,1),
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--host", default=os.getenv("RGDSPLUS_SSH_HOST"))
     parser.add_argument("action", choices=("deploy", "run", "status", "key", "shot", "stop",
-                                          "logs", "audit", "touch-probe", "perf", "page", "reset-review"))
+                                          "logs", "audit", "touch-probe", "touch-tap", "perf", "page", "reset-review"))
     parser.add_argument("--variant", choices=("r3", "r4", "review"), default="r3")
     parser.add_argument("--page-probe", action="store_true")
     parser.add_argument("--page", choices=("cards", "relics", "potions", "stats", "history",
@@ -34,16 +35,34 @@ def main():
     parser.add_argument("--scene", choices=[f"u{i:02}" for i in range(1, 34)])
     parser.add_argument("--seconds", type=int, default=1200)
     parser.add_argument("--fps", type=int, choices=(24, 30, 60), default=30)
-    parser.add_argument("--heap-mb", type=int, choices=(128, 140, 160, 180), default=140)
-    parser.add_argument("--initial-heap-mb", type=int, choices=(32, 64, 128), default=64)
+    parser.add_argument("--heap-mb", type=int, choices=(128, 140, 160, 180))
+    parser.add_argument("--initial-heap-mb", type=int, choices=(32, 64, 128))
     parser.add_argument("--gc", choices=("Serial", "G1", "Parallel"), default="Serial")
+    parser.add_argument("--jit-tier", type=int, choices=(1, 4))
     parser.add_argument("--diagnostic-io", choices=("card", "ram"), default="ram")
     parser.add_argument("--keys", nargs="+", choices=KEYS, default=[])
     parser.add_argument("--hold-seconds", type=float, default=.12)
     parser.add_argument("--name", default="native-ui")
+    sound = parser.add_mutually_exclusive_group()
+    sound.add_argument("--audio", action="store_true")
+    sound.add_argument("--silent", action="store_true")
+    parser.add_argument("--touch-live", action="store_true")
+    parser.add_argument("--x", type=int, default=512)
+    parser.add_argument("--y", type=int, default=384)
     args = parser.parse_args()
-    APP = "/mnt/sdcard/Ports/SlayTheSpireDual" + ("R4Review" if args.variant == "review" else args.variant.upper())
-    ENTRY = "Slay the Spire R4 All Pages.sh" if args.variant == "r4" else "Slay the Spire R3 Native UI.sh"
+    if args.heap_mb is None:
+        args.heap_mb = 140 if args.variant == "r3" else 128
+    if args.initial_heap_mb is None:
+        args.initial_heap_mb = 64 if args.variant == "r3" else 32
+    if args.jit_tier is None:
+        args.jit_tier = 4 if args.variant == "r3" else 1
+    if args.variant == "review":
+        APP = "/mnt/sdcard/Ports/SlayTheSpireDualR4Review"
+    elif args.variant == "r4":
+        APP = "/mnt/sdcard/Ports/Slay the Spire for RGDSplus"
+    else:
+        APP = "/mnt/sdcard/Ports/SlayTheSpireDualR3"
+    ENTRY = "Slay the Spire for RGDSplus.sh" if args.variant == "r4" else "Slay the Spire R3 Native UI.sh"
     if (args.page_probe or args.action == "page") and args.variant not in ("r4", "review"):
         parser.error("Gallery probe is restricted to the separate R4 clone")
     if args.scene and args.variant != "review":
@@ -56,10 +75,12 @@ def main():
         parser.error("Hold must be between .05 and 3 seconds")
     if args.hold_seconds > .5 and args.keys != ["select"]:
         parser.error("Long injection is restricted to the independent Select exit")
+    if not 0 <= args.x <= 1024 or not 0 <= args.y <= 768:
+        parser.error("Touch injection uses lower-local 1024x768 coordinates")
     client = paramiko.SSHClient()
     client.load_system_host_keys()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect("192.168.31.116", username="root", password=os.environ["RGDSPLUS_SSH_PASSWORD"],
+    client.connect(args.host, username="root", password=os.environ["RGDSPLUS_SSH_PASSWORD"],
                    timeout=12, look_for_keys=False, allow_agent=False)
     sftp = client.open_sftp()
     output = ROOT / ("validation/r4-review" if args.variant == "review" else
@@ -130,8 +151,8 @@ for p in Path('/proc').glob('[0-9]*/cmdline'):
         assert str(app/'supervisor.py').encode() not in parts, 'R3 active'
         assert b'java' != Path(parts[0].decode(errors='replace')).name.encode(), 'Close game'
     except (FileNotFoundError, IndexError): pass
-source = Path({'/mnt/sdcard/Ports/SlayTheSpireDualR4' if args.variant == 'review' else '/mnt/sdcard/Ports/SlayTheSpireDualR3' if args.variant == 'r4' else '/tmp/rgds-sts-silent-01'!r})
-assert source.resolve() == source and (source/'saves/IRONCLAD.autosave').is_file()
+source = Path({'/mnt/sdcard/Ports/Slay the Spire for RGDSplus' if args.variant == 'review' else '/mnt/sdcard/Ports/SlayTheSpireDualR3' if args.variant == 'r4' else '/tmp/rgds-sts-silent-01'!r})
+assert source.resolve() == source and (source/'desktop-1.0.jar').is_file() and (source/'saves').is_dir()
 app.mkdir(exist_ok=True)
 (app/'logs').mkdir(exist_ok=True)
 for name in ('desktop-1.0.jar','controller-injector.jar','texcompress-agent.jar',
@@ -148,7 +169,7 @@ for relative in ('cache/builds/'+build, 'cache/texcache', 'betaPreferences', 'sa
         shutil.copytree(source/relative, dest, ignore=shutil.ignore_patterns('pulse'))
 print('Private test clone ready; existing saves never overwritten')
 """, 240))
-            launch = configure((ROOT / "packaging/launch.sh").read_text())
+            launch = configure((ROOT / "packaging/launch.sh").read_text(encoding="utf-8"))
             write(APP + "/game-launch.sh", launch.encode())
             mapping = {
                 "rgds-dual-r3.jar": HERE/"build/rgds-dual-r3.jar",
@@ -158,6 +179,7 @@ print('Private test clone ready; existing saves never overwritten')
                 "run-java.sh": ROOT/"packaging/run-java.sh",
                 "patch_safe.sh": ROOT/"platform/patch_safe.sh",
                 "supervisor.py": HERE/"supervisor.py", "touch_bridge.py": HERE/"touch_bridge.py",
+                "touch_transport.py": HERE/"touch_transport.py",
                 "diagnostic_io.py": HERE/"diagnostic_io.py",
                 "touch_mode.py": ROOT/"prototype/p1/touch_mode.py",
                 "device_input.py": ROOT/"prototype/p1/device_input.py",
@@ -170,13 +192,19 @@ print('Private test clone ready; existing saves never overwritten')
                 hashes[name] = hashlib.sha256(data).hexdigest()
             if args.variant != "review":
                 write("/mnt/sdcard/Ports/" + ENTRY, (HERE/ENTRY).read_bytes())
-            write(APP+"/r3-manifest.json", json.dumps(dict(build="r4-layout-20260920-7",
+            write(APP+"/r3-manifest.json", json.dumps(dict(build="r4-interface-20260923-13",
                   renderer_base="r3-small-screen-20260920-3",
-                  default_profile=dict(fps=30, initial_heap_mb=64, heap_mb=140,
+                  default_profile=dict(fps=30, initial_heap_mb=64 if args.variant == "r3" else 32,
+                                       heap_mb=140 if args.variant == "r3" else 128,
+                                       jit_tier=4 if args.variant == "r3" else 1,
                                        gc="Serial", diagnostic_io="ram"),
-                  files=hashes, game_assets_in_adapter=False, touch_policy="capture-only")).encode())
-            print(shell(f"chmod +x {APP}/game-launch.sh {APP}/run-java.sh {APP}/patch_safe.sh " +
-                        (shlex.quote("/mnt/sdcard/Ports/" + ENTRY) if args.variant != "review" else "")))
+                  files=hashes, game_assets_in_adapter=False,
+                  touch_policy="native-lower-pointer" if args.variant == "r4" else "capture-only",
+                  audio_enabled=args.variant == "r4")).encode())
+            chmod_targets = [APP + "/game-launch.sh", APP + "/run-java.sh", APP + "/patch_safe.sh"]
+            if args.variant != "review":
+                chmod_targets.append("/mnt/sdcard/Ports/" + ENTRY)
+            print(shell("chmod +x " + " ".join(shlex.quote(path) for path in chmod_targets)))
         elif args.action == "reset-review":
             print(remote(f"""
 import shutil, time
@@ -192,17 +220,22 @@ for name in ('saves', 'betaPreferences'):
     dest = app/name
     assert dest.resolve().parent == app
     if dest.exists(): dest.rename(archive/name)
-    shutil.copytree(app.parent/'SlayTheSpireDualR4'/name, dest)
+    shutil.copytree(app.parent/'Slay the Spire for RGDSplus'/name, dest)
 print('Archived disposable specimen saves, copied unchanged R4 test baseline')
 """))
         elif args.action == "run":
-            print(shell(f"nohup python3 {APP}/supervisor.py --seconds {args.seconds} "
+            print(shell("nohup python3 " + shlex.quote(APP + "/supervisor.py")
+                        + f" --seconds {args.seconds} "
                         f"--fps {args.fps} --heap-mb {args.heap_mb} --gc {args.gc} "
                         f"--initial-heap-mb {args.initial_heap_mb} "
+                        f"--jit-tier {args.jit_tier} "
                         f"--diagnostic-io {args.diagnostic_io} "
                         f"{'--page-probe ' if args.page_probe else ''}"
                         f"{'--review ' if args.variant == 'review' else ''}"
-                        f">{APP}/logs/ssh.log 2>&1 </dev/null &"))
+                        f"{'--audio ' if args.audio else ''}"
+                        f"{'--silent ' if args.silent else ''}"
+                        f"{'--touch-live ' if args.touch_live else ''}"
+                        + " >" + shlex.quote(APP + "/logs/ssh.log") + " 2>&1 </dev/null &"))
         elif args.action == "page":
             remote(guard)
             directory = diagnostic_dir()
@@ -227,8 +260,10 @@ print('Archived disposable specimen saves, copied unchanged R4 test baseline')
                 raise RuntimeError("Gallery request rejected")
         elif args.action == "status":
             print(json.dumps(state(), ensure_ascii=False, indent=2))
-            print(shell(f"tail -20 {APP}/logs/supervisor.log"))
-            print(shell(f"if test -f {APP}/logs/latest-path.txt; then tail -25 \"$(cat {APP}/logs/latest-path.txt)\"; fi"))
+            supervisor_log = shlex.quote(APP + "/logs/supervisor.log")
+            latest_log = shlex.quote(APP + "/logs/latest-path.txt")
+            print(shell(f"tail -20 {supervisor_log}"))
+            print(shell(f"if test -f {latest_log}; then tail -25 \"$(cat {latest_log})\"; fi"))
         elif args.action == "key":
             before = state()
             print(remote(guard + f"""
@@ -257,13 +292,16 @@ finally:
                     keys=args.keys, hold_seconds=args.hold_seconds, before=before, after=after),
                     ensure_ascii=False) + "\n")
             print(json.dumps(after, ensure_ascii=False, indent=2))
-        elif args.action == "touch-probe":
+        elif args.action in ("touch-probe", "touch-tap"):
             before = state()
             touch_before = json.loads(read(diagnostic_dir() + "/touch-state.json"))
-            print(remote(guard + """
+            tap = args.action == "touch-tap"
+            policy = "native-lower-pointer" if tap else "capture-only"
+            print(remote(guard + f"""
 import fcntl, os, struct, time
 status=json.loads((Path(owned.get('runtime', str(app/'logs')))/'touch-state.json').read_text())
-assert status['policy']=='capture-only' and status['focused']
+assert status['policy']=={policy!r} and status['focused']
+""" + """
 assert all(d['grabbed'] and not d['contacts'] for d in status['devices'])
 p=next(p for p in Path('/sys/class/input').glob('event*/device/name')
        if p.read_text().strip()=='gt9xx-0')
@@ -280,7 +318,9 @@ try:
     armed=True
     report([(3,47,0),(3,57,-1),(1,330,0)])
     time.sleep(.1)
-    report([(3,47,0),(3,57,29001),(3,53,512),(3,54,384),(1,330,1)])
+""" + f"""
+    report([(3,47,0),(3,57,29001),(3,53,{args.x}),(3,54,{args.y}),(1,330,1)])
+""" + """
     time.sleep(.15)
 finally:
     if armed: report([(3,47,0),(3,57,-1),(1,330,0)])
@@ -295,19 +335,32 @@ finally:
             destination = output / f"touch-probe-{time.time_ns()}.json"
             destination.write_text(json.dumps(evidence, indent=2), encoding="utf-8")
             assert touch_after["actions"] - touch_before["actions"] == 2, "Expected one down/up"
-            for key in ("energy.totalCount", "hand.count", "discardPile.count",
-                        "player.currentHealth", "dungeon.screen"):
-                assert before["state.xml"].get(key) == after["state.xml"].get(key), key
+            if not tap:
+                for key in ("energy.totalCount", "hand.count", "discardPile.count",
+                            "player.currentHealth", "dungeon.screen"):
+                    assert before["state.xml"].get(key) == after["state.xml"].get(key), key
             print(destination)
-            print("One captured down/up; gameplay unchanged; not physical touch acceptance")
+            print(json.dumps(after, ensure_ascii=False, indent=2))
+            print("One injected down/up; not physical touch acceptance")
         elif args.action == "stop":
             print(remote(f"""
-import json, signal, sys
+import fcntl, json, signal, sys, time
 from pathlib import Path
 sys.path.insert(0, {APP!r})
 from supervisor import send
 s=json.loads(Path({APP+'/logs/recovery.json'!r}).read_text())
 send(s['owner'],s['birth'],signal.SIGTERM)
+until = time.monotonic() + 45
+with Path({APP+'/logs/session.lock'!r}).open('a+') as lock:
+    while True:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except BlockingIOError:
+            if time.monotonic() >= until:
+                raise TimeoutError('Supervisor recovery has not released its session lock')
+            time.sleep(.2)
+print('Session stopped and recovery lock released')
 """))
         elif args.action == "shot":
             from PIL import Image
@@ -380,7 +433,7 @@ print(json.dumps(result))
 import fcntl, hashlib, json, time
 from pathlib import Path
 app=Path({APP!r})
-result=dict(time_ns=time.time_ns(), processes=[], locks={{}}, hashes={{}})
+result=dict(time_ns=time.time_ns(), processes=[], locks={{}}, hashes={{}}, missing_baseline_files=[])
 result['tpctrl']=Path('/sys/class/anbernic_misc/tpctrl').read_text().strip()
 result['memory']=Path('/proc/meminfo').read_text()
 for p in Path('/proc').glob('[0-9]*/comm'):
@@ -392,7 +445,7 @@ for p in Path('/proc').glob('[0-9]*/comm'):
             result['processes'].append(dict(pid=int(p.parent.name),comm=comm,cmd=cmd,
                 stat=(p.parent/'stat').read_text(),status=(p.parent/'status').read_text()))
     except FileNotFoundError: pass
-for directory in ('SlayTheSpireDualR3','SlayTheSpireDualR4','SlayTheSpireDualR4Review','SlayTheSpireGeometryP1','SlayTheSpireTouchR2'):
+for directory in ('SlayTheSpireDualR3','Slay the Spire for RGDSplus','SlayTheSpireDualR4','SlayTheSpireDualR4Review','SlayTheSpireGeometryP1','SlayTheSpireTouchR2'):
     base=app.parent/directory
     path=base/'logs/session.lock'
     if path.exists():
@@ -407,7 +460,14 @@ for directory in ('SlayTheSpireDualR3','SlayTheSpireDualR4','SlayTheSpireDualR4R
         if path.is_file(): result['hashes'][str(path)]=hashlib.sha256(path.read_bytes()).hexdigest()
 for name in ('rgds-input-agent.jar','librgds-sdl.so','saves/IRONCLAD.autosave'):
     path=app.parent/'SlayTheSpire'/name
-    result['hashes'][str(path)]=hashlib.sha256(path.read_bytes()).hexdigest()
+    if path.is_file():
+        result['hashes'][str(path)]=hashlib.sha256(path.read_bytes()).hexdigest()
+    else:
+        result['missing_baseline_files'].append(str(path))
+for directory in ('SlayTheSpireDualR3', 'Slay the Spire for RGDSplus', 'SlayTheSpireDualR4'):
+    for path in (app.parent/directory/'saves').glob('*'):
+        if path.is_file():
+            result['hashes'][str(path)]=hashlib.sha256(path.read_bytes()).hexdigest()
 print(json.dumps(result))
 """))
             destination = output/f"audit-{evidence['time_ns']}.json"
@@ -415,6 +475,7 @@ print(json.dumps(result))
             print(destination)
             print(json.dumps(dict(tpctrl=evidence["tpctrl"], locks=evidence["locks"],
                 processes=[dict(pid=p["pid"], comm=p["comm"]) for p in evidence["processes"]],
+                missing_baseline_files=evidence["missing_baseline_files"],
                 hashes=evidence["hashes"]), indent=2))
     finally:
         sftp.close()

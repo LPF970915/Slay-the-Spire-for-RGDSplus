@@ -11,6 +11,7 @@ import com.megacrit.cardcrawl.core.Settings;
 import com.megacrit.cardcrawl.core.AbstractCreature;
 import com.megacrit.cardcrawl.monsters.AbstractMonster;
 import com.megacrit.cardcrawl.dungeons.AbstractDungeon;
+import com.megacrit.cardcrawl.rooms.AbstractRoom;
 import com.megacrit.cardcrawl.characters.AbstractPlayer;
 import com.megacrit.cardcrawl.helpers.ImageMaster;
 import com.megacrit.cardcrawl.helpers.Hitbox;
@@ -33,11 +34,15 @@ public final class DualRender {
     private static final Map<Class<?>, Integer> eventRoutes = new HashMap<Class<?>, Integer>();
     private static int screen;
     private static int frames, updates;
+    private static long touchOrder;
     private static long nextReport;
     private static boolean backgroundPass;
     private static boolean mapPass;
     private static int backgroundBatches;
     private static final Map<Hitbox, UiTransform> hitTransforms = new WeakHashMap<Hitbox, UiTransform>();
+    private static final Map<Hitbox, Integer> hitTransformFrames = new WeakHashMap<Hitbox, Integer>();
+    private static final Map<Hitbox, TouchHit> touchHits = new WeakHashMap<Hitbox, TouchHit>();
+    private static final Matrix4 touchMatrix = new Matrix4();
     private static final int[][] pointers = new int[32][3];
     private static int pointerDepth;
     private static boolean active;
@@ -61,6 +66,98 @@ public final class DualRender {
     private static Object aimCard;
     private static int lastAimFrame = -1;
     private static float aimTimer;
+
+    private static final class TouchHit {
+        int frame, panel;
+        long order;
+        float a, b, c, d, tx, ty;
+    }
+
+    /** Menu and slot screens have no map node; the native getter would throw. */
+    private static AbstractRoom currentRoom() {
+        return CardCrawlGame.dungeon == null || AbstractDungeon.currMapNode == null
+                ? null : AbstractDungeon.getCurrRoom();
+    }
+
+    public static long touchOrder(Hitbox hb, float x, float y) {
+        TouchHit hit = touchHits.get(hb);
+        if (hit == null || hit.frame != frames || hit.panel != 1 ||
+                registeredScreen != nativeScreenIdentity() ||
+                registeredRoom != currentRoom()) return -1;
+        float determinant = hit.a * hit.d - hit.b * hit.c;
+        if (Math.abs(determinant) < .0001f) return -1;
+        float dx = x - hit.tx, dy = 768 - y - hit.ty;
+        float nx = (hit.d * dx - hit.b * dy) / determinant;
+        float ny = (hit.a * dy - hit.c * dx) / determinant;
+        return nx >= hb.x && nx <= hb.x + hb.width && ny >= hb.y &&
+                ny <= hb.y + hb.height ? hit.order : -1;
+    }
+
+    public static Hitbox touchHitAt(float x, float y) {
+        Hitbox result = null;
+        long order = -1;
+        for (Hitbox hb : touchHits.keySet()) {
+            long candidate = touchOrder(hb, x, y);
+            if (candidate > order) { order = candidate; result = hb; }
+        }
+        return result;
+    }
+
+    public static void touchPosition(Properties state, String prefix, Hitbox hb) {
+        TouchHit hit = touchHits.get(hb);
+        if (hit == null || hit.frame != frames || hit.panel != 1) return;
+        state.setProperty(prefix + ".x", Float.toString(hit.a * hb.cX + hit.b * hb.cY + hit.tx));
+        state.setProperty(prefix + ".y", Float.toString(768 - hit.c * hb.cX - hit.d * hb.cY - hit.ty));
+    }
+
+    public static Object touchContext() {
+        return CardCrawlGame.mode + "/" + nativeScreenIdentity() + "/" +
+                (CardCrawlGame.dungeon == null ? null : currentRoom()) + "/" +
+                (CardCrawlGame.cardPopup != null && CardCrawlGame.cardPopup.isOpen) + "/" +
+                (CardCrawlGame.relicPopup != null && CardCrawlGame.relicPopup.isOpen) + "/" +
+                (CardCrawlGame.mainMenuScreen != null && CardCrawlGame.mainMenuScreen.saveSlotScreen.shown) +
+                "/" + UpperInteraction.context() + "/" + TextKeyboard.epoch();
+    }
+
+    public static boolean nativeTouchFlow() {
+        if (TextKeyboard.active() || CardCrawlGame.cardPopup != null && CardCrawlGame.cardPopup.isOpen ||
+                CardCrawlGame.relicPopup != null && CardCrawlGame.relicPopup.isOpen) return false;
+        String current = currentPageId();
+        return java.util.Arrays.asList("U06", "U13", "U14", "U15", "U16",
+                "U17", "U18", "U19", "U20", "U21", "U22", "U23").contains(current);
+    }
+
+    public static void cancelTouchHits() {
+        for (Hitbox hb : touchHits.keySet()) {
+            hb.clickStarted = hb.clicked = hb.hovered = hb.justHovered = false;
+        }
+    }
+
+    /** Preserve native button click semantics when a lower-panel release is
+     * processed after the button's own hitbox update. */
+    public static void nativeButtonRelease(Hitbox hb) {
+        if (!TouchInput.ownsPointer() || !TouchInput.state.justUp ||
+                touchOrder(hb, TouchInput.state.x, TouchInput.state.y) < 0) return;
+        hb.clickStarted = false;
+        hb.clicked = true;
+    }
+
+    public static void recordTouchHit(Hitbox hb, SpriteBatch batch) {
+        if (!TouchInput.enabled || !active || CardFlight.visual()) return;
+        TouchHit hit = touchHits.get(hb);
+        if (hit == null) { hit = new TouchHit(); touchHits.put(hb, hit); }
+        float[] m = touchMatrix.set(batch.getProjectionMatrix()).mul(batch.getTransformMatrix()).val;
+        float height = mapPass ? 1536 : 768;
+        // Interactive mirrored pages (map/chest) render primarily on the lower
+        // panel. Upper previews are read-only, even when their mesh is mirrored.
+        float viewportY = mapPass && screen == 0 ? -768 : 0;
+        hit.a = m[Matrix4.M00] * 512; hit.b = m[Matrix4.M01] * 512;
+        hit.c = m[Matrix4.M10] * height / 2; hit.d = m[Matrix4.M11] * height / 2;
+        hit.tx = (m[Matrix4.M03] + 1) * 512;
+        hit.ty = viewportY + (m[Matrix4.M13] + 1) * height / 2;
+        hit.panel = screen; hit.frame = frames;
+        hit.order = ++touchOrder;
+    }
 
     private static final class State {
         int screen;
@@ -139,7 +236,7 @@ public final class DualRender {
             UiTransform layout = handLayout();
             transform.translate(layout.dx, layout.dy, 0).scale(layout.scale, layout.scale, 1);
             for (com.megacrit.cardcrawl.cards.AbstractCard card : AbstractDungeon.player.hand.group)
-                hitTransforms.put(card.hb, layout);
+                rememberLayout(card.hb, layout);
         }
         // FontHelper rewrites the transform for rotated card text. Keep the
         // outer layout in projection space so every card sublayer agrees.
@@ -160,7 +257,13 @@ public final class DualRender {
         freeStates.addFirst(state);
     }
 
-    public static void logicTick() { updates++; }
+    public static void logicTick() {
+        updates++;
+        CardFlight.tick();
+        StartupWarmup.tick();
+        if (CardCrawlGame.mode == CardCrawlGame.GameMode.GAMEPLAY)
+            StartupWarmup.stopForGameplay();
+    }
 
     public static void page(SpriteBatch batch, int target, boolean mirror, String id, String type) {
         push(batch, target, false);
@@ -233,24 +336,22 @@ public final class DualRender {
             layout = UiTransform.anchored(scale, hb.cX, hb.cY, x, y);
         }
         applyLayout(batch, layout);
-        hitTransforms.put(hb, layout);
+        rememberLayout(hb, layout);
     }
 
-    public static void eventOption(SpriteBatch batch, Object owner) {
+    public static void eventOption(SpriteBatch batch, Object owner, int count) {
         push(batch, 1, false);
         Object value = get(owner, "hb");
         if (!(value instanceof Hitbox)) return;
         Hitbox hb = (Hitbox)value;
         Object slotValue = get(owner, "slot");
         int slot = slotValue instanceof Number ? ((Number)slotValue).intValue() : 0;
-        int count = com.megacrit.cardcrawl.events.RoomEventDialog.optionList == null
-                ? 1 : com.megacrit.cardcrawl.events.RoomEventDialog.optionList.size();
-        if (count == 0) count = 1;
+        count = Math.max(1, count);
         float scale = 1.22f;
         float targetY = 384 + (count - 1) * 52 - slot * 104;
         UiTransform layout = UiTransform.anchored(scale, hb.cX, hb.cY, 512, targetY);
         applyLayout(batch, layout);
-        hitTransforms.put(hb, layout);
+        rememberLayout(hb, layout);
     }
 
     public static void preview(SpriteBatch batch, Object item, Object owner) {
@@ -275,7 +376,7 @@ public final class DualRender {
             float scale = Math.min(1.20f, handLayout().scale);
             UiTransform layout = UiTransform.anchored(scale, 512, c.current_y, 512, hovered ? 235 : 195);
             applyLayout(batch, layout);
-            hitTransforms.put(c.hb, layout);
+            rememberLayout(c.hb, layout);
         }
         if ((hb instanceof Hitbox && ((Hitbox)hb).hovered) ||
                 item == get(owner, "hoveredCard") || item == get(owner, "upgradePreviewCard") ||
@@ -296,6 +397,7 @@ public final class DualRender {
     }
 
     public static void endPage(SpriteBatch batch, boolean mirror) {
+        if (screen == 1) ReleaseSignature.draw(batch);
         if (mirror) endBackground(batch);
         pop(batch);
     }
@@ -326,8 +428,8 @@ public final class DualRender {
 
     public static int dialogTarget() {
         if (CardCrawlGame.mode != CardCrawlGame.GameMode.GAMEPLAY ||
-                AbstractDungeon.getCurrRoom() == null) return 1;
-        if (AbstractDungeon.getCurrRoom().event instanceof com.megacrit.cardcrawl.neow.NeowEvent)
+                currentRoom() == null) return 1;
+        if (currentRoom().event instanceof com.megacrit.cardcrawl.neow.NeowEvent)
             return 0;
         // Generic event text and its speech animation stay on the upper panel.
         // Only LargeDialogOptionButton is routed to the lower touch panel.
@@ -352,9 +454,12 @@ public final class DualRender {
     }
 
     private static boolean combatLayout() {
+        AbstractRoom room = currentRoom();
         return CardCrawlGame.mode == CardCrawlGame.GameMode.GAMEPLAY &&
-                CardCrawlGame.dungeon != null && AbstractDungeon.getCurrRoom() != null &&
-                AbstractDungeon.getCurrRoom().getClass().getSimpleName().startsWith("MonsterRoom");
+                CardCrawlGame.dungeon != null && room != null &&
+                room.phase == AbstractRoom.RoomPhase.COMBAT &&
+                !room.isBattleOver && !AbstractDungeon.isScreenUp &&
+                AbstractDungeon.player != null && !AbstractDungeon.player.isDead;
     }
 
     public static void pointerBegin(Hitbox hb) {
@@ -363,9 +468,48 @@ public final class DualRender {
         saved[0] = InputHelper.mX;
         saved[1] = InputHelper.mY;
         saved[2] = 0;
+        if (TouchInput.ownsPointer()) {
+            saved[2] = 1;
+            if (MapTouch.suppressHit(hb)) {
+                InputHelper.mX = InputHelper.mY = -10000;
+                hb.clickStarted = hb.clicked = false;
+                return;
+            }
+            TouchHit hit = touchHits.get(hb);
+            if (hit != null && hit.panel == 1 && hit.frame == frames &&
+                    registeredScreen == nativeScreenIdentity() &&
+                    registeredRoom == (CardCrawlGame.dungeon == null ? null : currentRoom())) {
+                if (TouchInput.state.justDown && touchOrder(hb, TouchInput.state.x, TouchInput.state.y) >= 0)
+                {
+                    InputHelper.justClickedLeft = true;
+                    InputHelper.mX = Math.round(hit.a * hb.cX + hit.b * hb.cY + hit.tx);
+                    InputHelper.mY = Math.round(hit.c * hb.cX + hit.d * hb.cY + hit.ty);
+                }
+                if (TouchInput.state.justUp && hb.clickStarted) {
+                    // Validate the final lower-panel position before restoring
+                    // native coordinates. Dragging off a button cancels it.
+                    boolean inside = touchOrder(hb, TouchInput.state.x, TouchInput.state.y) >= 0;
+                    InputHelper.mX = inside ? Math.round(hb.cX) : -10000;
+                    InputHelper.mY = inside ? Math.round(hb.cY) : -10000;
+                    return;
+                }
+                float determinant = hit.a * hit.d - hit.b * hit.c;
+                if (Math.abs(determinant) > .0001f) {
+                    float x = saved[0] - hit.tx, y = saved[1] - hit.ty;
+                    InputHelper.mX = Math.round((hit.d * x - hit.b * y) / determinant);
+                    InputHelper.mY = Math.round((hit.a * y - hit.c * x) / determinant);
+                    return;
+                }
+            }
+            // A lower-screen contact must never activate an upper or unseen hitbox.
+            InputHelper.mX = InputHelper.mY = -10000;
+            hb.clickStarted = hb.clicked = false;
+            return;
+        }
         UiTransform layout = hitTransforms.get(hb);
         if (layout != null && registeredScreen == nativeScreenIdentity() &&
-                registeredRoom == (CardCrawlGame.dungeon == null ? null : AbstractDungeon.getCurrRoom()) &&
+                registeredRoom == (CardCrawlGame.dungeon == null ? null : currentRoom()) &&
+                Integer.valueOf(frames).equals(hitTransformFrames.get(hb)) &&
                 !Settings.isControllerMode) {
             saved[2] = 1;
             InputHelper.mX = Math.round(layout.inverseX(InputHelper.mX));
@@ -397,7 +541,7 @@ public final class DualRender {
         if (layout == null || layout.scale != 1.40f || layout.dx != dx || layout.dy != dy)
             layout = new UiTransform(1.40f, dx, dy);
         applyLayout(batch, layout);
-        hitTransforms.put(hb, layout);
+        rememberLayout(hb, layout);
     }
 
     public static void pushInfo(SpriteBatch batch, Object owner, String kind) {
@@ -416,6 +560,44 @@ public final class DualRender {
         Matrix4 transform = layoutMatrix.idt().translate(layout.dx, layout.dy, 0)
                 .scale(layout.scale, layout.scale, 1);
         batch.setProjectionMatrix(projectedMatrix.set(baseProjection).mul(transform));
+    }
+
+    private static void rememberLayout(Hitbox hb, UiTransform layout) {
+        if (hb == null || layout == null) return;
+        hitTransforms.put(hb, layout);
+        hitTransformFrames.put(hb, frames);
+    }
+
+    public static void pushFlight(SpriteBatch batch) {
+        push(batch, 1, false);
+        mirrorLayout = new UiTransform(1, 0, -816);
+        beginBackground(batch);
+    }
+
+    public static void pushEffect(SpriteBatch batch, Object effect, String kind) {
+        Object overlay = AbstractDungeon.overlayMenu;
+        Object owner = get(overlay, kind.equals("energy") ? "energyPanel" :
+                kind.equals("draw") ? "combatDeckPanel" :
+                kind.equals("discard") ? "discardPilePanel" : "endTurnButton");
+        if (owner != null && (kind.equals("energy") || kind.equals("draw") ||
+                kind.equals("discard") || kind.equals("end"))) {
+            pushControl(batch, owner, kind);
+        } else if (kind.equals("hand")) {
+            Object card = get(effect, "card");
+            if (card != null && !CardFlight.visual() && AbstractDungeon.player != null &&
+                    AbstractDungeon.player.hand.group.contains(card))
+                push(batch, 1, true);
+            else preserve(batch);
+        } else preserve(batch);
+    }
+
+    public static void preserve(SpriteBatch batch) {
+        push(batch, screen, false);
+        State saved = stack.peek();
+        batch.setProjectionMatrix(saved.projection);
+        batch.setTransformMatrix(saved.transform);
+        backgroundPass = saved.mirror; mapPass = saved.map; mirrorLayout = saved.preview;
+        restoreViewport();
     }
 
     public static void beginBackground(SpriteBatch batch) {
@@ -454,22 +636,36 @@ public final class DualRender {
                 CardCrawlGame.mainMenuScreen == null ? null : CardCrawlGame.mainMenuScreen.screen;
     }
 
+    private static String currentPageId() {
+        boolean dungeon = CardCrawlGame.mode == CardCrawlGame.GameMode.GAMEPLAY &&
+                CardCrawlGame.dungeon != null;
+        String room = dungeon && currentRoom() != null ?
+                currentRoom().getClass().getSimpleName() : "";
+        return dungeon ? ScreenRoutes.dungeonId(String.valueOf(AbstractDungeon.screen), room) :
+                ScreenRoutes.MENU.getOrDefault(String.valueOf(nativeScreenIdentity()), "U33");
+    }
+
     public static void begin(SpriteBatch batch) {
         if (!stack.isEmpty()) throw new IllegalStateException("Unbalanced dual render scope");
         active = true;
         frames++;
-        Object roomIdentity = CardCrawlGame.dungeon == null ? null : AbstractDungeon.getCurrRoom();
+        Object roomIdentity = CardCrawlGame.dungeon == null ? null : currentRoom();
         if (registeredRoom != roomIdentity || registeredScreen != nativeScreenIdentity()) {
             hitTransforms.clear();
+            hitTransformFrames.clear();
+            touchHits.clear();
             registeredRoom = roomIdentity;
             registeredScreen = nativeScreenIdentity();
         }
         baseProjection.set(batch.getProjectionMatrix());
         boolean dungeon = CardCrawlGame.mode == CardCrawlGame.GameMode.GAMEPLAY &&
                 CardCrawlGame.dungeon != null && CardCrawlGame.dungeonTransitionScreen == null;
-        String room = dungeon && AbstractDungeon.getCurrRoom() != null
-                ? AbstractDungeon.getCurrRoom().getClass().getSimpleName() : "";
-        splitDungeon = dungeon && room.startsWith("MonsterRoom");
+        String room = dungeon && currentRoom() != null
+                ? currentRoom().getClass().getSimpleName() : "";
+        // Event-triggered fights keep EventRoom as their native room class.
+        // Use the room phase, not only the class name, so their hand and
+        // combat controls receive the same lower-panel transform.
+        splitDungeon = dungeon && combatLayout();
         routedDungeon = dungeon && ScreenRoutes.knownRoom(room);
         String nativeScreen = dungeon ? String.valueOf(AbstractDungeon.screen) :
                 CardCrawlGame.mainMenuScreen == null ? "NONE" :
@@ -525,6 +721,12 @@ public final class DualRender {
         batch.setColor(previous);
     }
 
+    public static void dungeonOverlay(SpriteBatch batch) {
+        boolean tutorial = AbstractDungeon.screen == AbstractDungeon.CurrentScreen.FTUE;
+        push(batch, tutorial ? 1 : 0, false);
+        if (!tutorial) beginBackground(batch);
+    }
+
     private static void dimCreditsPanel(SpriteBatch batch, int target) {
         Color previous = new Color(batch.getColor());
         push(batch, target, false);
@@ -535,10 +737,11 @@ public final class DualRender {
     }
 
     public static void targeting(SpriteBatch batch, AbstractPlayer player) {
+        boolean self = CombatTouch.selfAiming();
         Object monster = get(player, "hoveredMonster");
         Object card = get(player, "hoveredCard");
-        Object hb = get(monster, "hb");
-        if (hb == null || card == null) return;
+        Object hb = self ? player.hb : get(monster, "hb");
+        if (card == null || hb == null) return;
         float tx = ((Number)get(hb, "cX")).floatValue();
         float ty = ((Number)get(hb, "cY")).floatValue();
         float cx = ((Number)get(card, "current_x")).floatValue();
@@ -548,7 +751,8 @@ public final class DualRender {
         float startY = 816 + 768 - layout.y(cy);
         float endY = 768 - ty;
         Color color = new Color(batch.getColor());
-        aimCurve.set(startX, startY, tx, endY);
+        if (CombatTouch.card == card) aimCurve.setLocked(startX, startY, tx, endY);
+        else aimCurve.set(startX, startY, tx, endY);
         float length = 0, previousX = startX, previousY = startY;
         for (int i = 1; i <= 160; i++) {
             aimCurve.point(curvePoint, i / 160f);
@@ -573,7 +777,7 @@ public final class DualRender {
             lastAimFrame = frames;
         }
         float tipScale = Interpolation.elasticOut.apply(Settings.scale, Settings.scale * 1.2f, aimTimer);
-        Color arrowColor = (Color)get(AbstractPlayer.class, "ARROW_COLOR");
+        Color arrowColor = self ? Color.LIGHT_GRAY : (Color)get(AbstractPlayer.class, "ARROW_COLOR");
         for (int target = 0; target < 2; target++) {
             push(batch, target, false);
             batch.setColor(arrowColor);
@@ -597,11 +801,16 @@ public final class DualRender {
         if (!stack.isEmpty()) throw new IllegalStateException("Unbalanced dual scopes at frame end");
         upperBlackOverlay(batch);
         PageSummary.render(batch, pageId);
+        CardFlight.render(batch);
+        DetailControls.render(batch);
+        TextKeyboard.render(batch);
+        if (CombatTouch.selfAiming()) targeting(batch, AbstractDungeon.player);
+        CombatTouch.displayed();
         long now = System.nanoTime();
         if (now >= nextReport) {
             System.out.println("[rgds-r3] frames=" + frames + " updates=" + updates +
                     " logical=" + Settings.WIDTH + "x" + Settings.HEIGHT +
-                    " nativeUI=true touchPolicy=capture-only");
+                    " nativeUI=true touchPolicy=" + TouchInput.policy());
             String directory = System.getenv("RGDS_DIAGNOSTICS_DIR");
             if (directory != null) {
                 try {
@@ -609,17 +818,24 @@ public final class DualRender {
                     state.setProperty("frames", String.valueOf(frames));
                     state.setProperty("updates", String.valueOf(updates));
                     state.setProperty("nativeUI", "true");
-                    state.setProperty("touchPolicy", "capture-only");
+                    state.setProperty("touchPolicy", TouchInput.policy());
+                    CombatTouch.diagnostics(state);
+                    MapTouch.diagnostics(state);
+                    CardFlight.diagnostics(state);
+                    CombatEffects.diagnostics(state);
+                    UiDiagnostics.collect(state);
+                    TextKeyboard.diagnostics(state);
                     state.setProperty("handScale", String.valueOf(handLayout().scale));
                     state.setProperty("handRise", String.valueOf(handLayout().dy));
                     state.setProperty("backgroundPolicy", "native-background-mesh-mirror");
                     state.setProperty("backgroundBatches", String.valueOf(backgroundBatches));
+                    state.setProperty("warmup", StartupWarmup.state());
                     state.setProperty("controlScale", "1.40");
                     state.setProperty("battleInfoScale", "1.30");
-                    state.setProperty("build", "r4-layout-20260920-7");
+                    state.setProperty("build", "r4-interface-20260923-12");
                     state.setProperty("mapPolicy", "continuous-1024x1536-native-offset");
                     state.setProperty("menuPolicy", "continuous-bottom-sky-band-tower-1.28");
-                    state.setProperty("targetingPolicy", "native-red-sprites-quadratic-gpu-clipped");
+                    state.setProperty("targetingPolicy", "native-sprites-sticky-enemy-gray-self");
                     state.setProperty("mode", String.valueOf(CardCrawlGame.mode));
                     state.setProperty("screen", String.valueOf(AbstractDungeon.screen));
                     state.setProperty("layout", splitDungeon ? "battle-split" : routedDungeon ? "room-split" : "menu-or-lower-fallback");

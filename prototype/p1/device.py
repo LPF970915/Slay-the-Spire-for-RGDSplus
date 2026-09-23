@@ -23,7 +23,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=("deploy", "run", "fetch", "status", "stop",
                                            "tests", "key", "touch", "freeze", "crash"))
-    parser.add_argument("--host", default="192.168.31.116")
+    parser.add_argument("--host", default=os.getenv("RGDSPLUS_SSH_HOST"))
     parser.add_argument("--seconds", type=float, default=12)
     parser.add_argument("--replay", action="store_true")
     parser.add_argument("--background", action="store_true")

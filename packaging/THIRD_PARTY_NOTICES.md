@@ -10,4 +10,4 @@ The purchased game JAR, Windows executable, saves, and user logs are not
 included.
 
 This notice is not a substitute for reviewing the license text shipped with
-the exact upstream files before public redistribution.
+the exact upstream files before redistribution.

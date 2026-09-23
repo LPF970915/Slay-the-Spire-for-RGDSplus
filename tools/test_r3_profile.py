@@ -14,25 +14,29 @@ from analyze_r3_perf import analyze
 
 class ProfileTests(unittest.TestCase):
     def test_isolated_overrides(self):
-        original = (ROOT / "packaging/launch.sh").read_text()
+        original = (ROOT / "packaging/launch.sh").read_text(encoding="utf-8")
         result = configure(original)
         self.assertIn("768\\n24\\n", original)
         self.assertNotIn("768\\n24\\n", result)
         self.assertIn('${RGDS_R3_FPS:-30}', result)
         self.assertIn('"-XX:+Use${RGDS_R3_GC:-Serial}GC"', result)
         self.assertIn("-Xlog:gc*,safepoint", result)
+        self.assertIn('"-XX:TieredStopAtLevel=${RGDS_R4_JIT_TIER:-4}"', result)
         self.assertIn('"-Xms${RGDS_R3_XMS:-64}M"', result)
         self.assertIn("librgds-dual.so", result)
         self.assertEqual(result.count('"-javaagent:$APP_DIR/rgds-dual-r3.jar"'), 1)
-        self.assertEqual(original, (ROOT / "packaging/launch.sh").read_text())
+        self.assertEqual(
+            original,
+            (ROOT / "packaging/launch.sh").read_text(encoding="utf-8"),
+        )
 
     def test_launcher_drift_rejected(self):
         with self.assertRaises(ValueError):
             configure("")
 
     def test_deploy_contains_runtime_helper(self):
-        device = (ROOT / "prototype/r3/device.py").read_text()
-        supervisor = (ROOT / "prototype/r3/supervisor.py").read_text()
+        device = (ROOT / "prototype/r3/device.py").read_text(encoding="utf-8")
+        supervisor = (ROOT / "prototype/r3/supervisor.py").read_text(encoding="utf-8")
         self.assertIn('"diagnostic_io.py": HERE/"diagnostic_io.py"', device)
         self.assertIn('archive_runtime(ROOT, state.get("runtime"))', supervisor)
         self.assertEqual(supervisor.count('archive_runtime(ROOT, state.get("runtime"))'), 2)
@@ -46,8 +50,12 @@ class ProfileTests(unittest.TestCase):
             runtime.mkdir()
             (runtime / "state.xml").write_text("<state/>")
             (runtime / "capture.request").write_text("capture")
+            (runtime / "page-result.txt").write_text("opened")
+            (runtime / "page.request").write_text("u14")
+            (runtime / "page.request.tmp").write_text("u15")
             archive_runtime(root, runtime, base)
             self.assertEqual((root / "logs/state.xml").read_text(), "<state/>")
+            self.assertEqual((root / "logs/page-result.txt").read_text(), "opened")
             self.assertFalse(runtime.exists())
             archive_runtime(root, runtime, base)
 

@@ -75,20 +75,148 @@ fi
 if [ ! -f "$APP_DIR/desktop-1.0.jar" ]; then
     echo "[launcher] missing user file: $APP_DIR/desktop-1.0.jar"
     if type pm_message >/dev/null 2>&1; then
-        pm_message "Copy your purchased desktop-1.0.jar into the SlayTheSpire folder."
+        pm_message "Copy your purchased desktop-1.0.jar into the Slay the Spire for RGDSplus folder."
     fi
     exit 2
 fi
+
+TEXTURE_CACHE_DEFAULT="$APP_DIR/cache/texcache"
+NOTICE_PID=""
+NOTICE_SCRIPT=""
+NOTICE_WATCHER=""
+
+start_resource_notice() {
+    if [ -n "$NOTICE_PID" ] && kill -0 "$NOTICE_PID" 2>/dev/null; then
+        return
+    fi
+    NOTICE_SCRIPT=/tmp/sts-rgds-notice-$$.sh
+    {
+        printf '#!/bin/sh\nLOG=%q\nCACHE=%q\nOWNER=%q\n' "$LOG" "$TEXTURE_CACHE_DEFAULT" "$$"
+        cat <<'NOTICE_BODY'
+started=$(date +%s)
+last_signature=
+stalled=0
+spin=0
+while :; do
+    kill -0 "$OWNER" 2>/dev/null || exit 0
+    if grep -q '\[rgds-r3\] frames=' "$LOG" 2>/dev/null; then
+        exit 0
+    fi
+    now=$(date +%s)
+    elapsed=$((now - started))
+    minutes=$((elapsed / 60))
+    seconds=$((elapsed % 60))
+    files=$(find "$CACHE" -maxdepth 1 -type f -name '*.tex' 2>/dev/null | wc -l)
+    bytes=$(du -sk "$CACHE" 2>/dev/null | awk '{print $1 + 0}')
+    [ -n "$bytes" ] || bytes=0
+    current=$(grep -E '\[release\]|\[TexCompress\]|\[rgds-sdl\]|\[rgds-r3\]' "$LOG" 2>/dev/null | tail -n 1)
+    [ -n "$current" ] || current='等待游戏运行时开始处理纹理'
+    signature="$files:$bytes:$current"
+    if [ "$signature" = "$last_signature" ]; then
+        stalled=$((stalled + 1))
+    else
+        stalled=0
+        last_signature=$signature
+    fi
+    case "$current" in
+        *'phase=extract-assets'*) phase='阶段 1/4：释放字体、图片和音频' ;;
+        *'phase=compress-audio'*|*'[release] audio '*) phase='阶段 2/4：压缩音频' ;;
+        *'phase=clean-source'*) phase='阶段 3/4：清理原始资源' ;;
+        *'phase=apply-xdelta'*) phase='阶段 3/4：应用适配补丁' ;;
+        *'phase=add-processed-assets'*) phase='阶段 4/4：写入处理后的资源' ;;
+        *'phase=verify-archive'*) phase='阶段 4/4：校验适配包' ;;
+        *'ASTC:'*|*'CACHE HIT'*) phase='正在生成纹理缓存' ;;
+        *'frames='*) phase='正在进入游戏界面' ;;
+        *) phase='正在启动游戏运行时' ;;
+    esac
+    case "$spin" in
+        0) mark='|' ;;
+        1) mark='/' ;;
+        2) mark='-' ;;
+        *) mark='\\' ;;
+    esac
+    spin=$(( (spin + 1) % 4 ))
+    if [ "$stalled" -ge 15 ]; then
+        activity="最近 15 秒计数未变化，仍在等待当前任务完成 [$mark]"
+    else
+        activity="数据仍在刷新，心跳 [$mark]"
+    fi
+    printf '\033[H\033[2J'
+    printf '%s\n\n' 'Slay the Spire for RGDSplus'
+    printf '%s\n' '正在释放资源，请不要关机。'
+    printf '已运行 %02d:%02d    %s\n' "$minutes" "$seconds" "$activity"
+    printf '%s\n' "$phase"
+    printf '纹理缓存：%s 个文件，约 %s KiB\n' "$files" "$bytes"
+    printf '最近处理：%s\n\n' "$current"
+    printf '%s\n' '数据持续变化表示没有卡死；游戏首帧出现后本提示会自动关闭。'
+    printf '%s\n' 'Releasing resources. The changing counters confirm that work is continuing.'
+    sleep 1
+done
+NOTICE_BODY
+    } >"$NOTICE_SCRIPT"
+    chmod +x "$NOTICE_SCRIPT"
+    if [ -x /usr/bin/weston-terminal ] && [ -n "${WAYLAND_DISPLAY:-}" ] &&
+       [ -S "${XDG_RUNTIME_DIR:-/var/run}/${WAYLAND_DISPLAY}" ]; then
+        /usr/bin/weston-terminal --fullscreen --font-size=20 --shell "$NOTICE_SCRIPT" >/dev/null 2>&1 &
+        NOTICE_PID=$!
+        echo "[launcher] resource notice pid=$NOTICE_PID"
+    else
+        echo "[launcher] resource notice unavailable; progress remains in the log"
+    fi
+}
+
+stop_resource_notice() {
+    if [ -n "${NOTICE_WATCHER:-}" ]; then
+        kill "$NOTICE_WATCHER" 2>/dev/null || true
+        wait "$NOTICE_WATCHER" 2>/dev/null || true
+        NOTICE_WATCHER=""
+    fi
+    if [ -n "${NOTICE_PID:-}" ]; then
+        kill "$NOTICE_PID" 2>/dev/null || true
+        wait "$NOTICE_PID" 2>/dev/null || true
+        NOTICE_PID=""
+    fi
+    if [ -n "${NOTICE_SCRIPT:-}" ]; then
+        rm -f "$NOTICE_SCRIPT"
+        NOTICE_SCRIPT=""
+    fi
+}
+
+# Resource extraction precedes the full runtime cleanup trap.
+trap 'stop_resource_notice; rm -rf "$LOCK_DIR"' EXIT
+trap 'exit 143' TERM HUP
+trap 'exit 130' INT
 
 SOURCE_SHA=$(sha256sum "$APP_DIR/desktop-1.0.jar" | awk '{print $1}')
 BUILD_ID="${SOURCE_SHA}-p0-single-3"
 BUILD_DIR="$APP_DIR/cache/builds/$BUILD_ID"
 OUTPUT="$BUILD_DIR/desktoppatched.jar"
 STAMP="$BUILD_DIR/ready.txt"
+TEXTURE_CACHE_READY="$APP_DIR/cache/texcache/.ready"
 
-if [ ! -f "$OUTPUT" ] || [ ! -f "$STAMP" ] ||
-   ! grep -qx "source_sha256=$SOURCE_SHA" "$STAMP"; then
+cached_jar_is_valid() {
+    [ -s "$OUTPUT" ] &&
+        [ -f "$STAMP" ] &&
+        grep -qx "source_sha256=$SOURCE_SHA" "$STAMP" &&
+        command -v unzip >/dev/null 2>&1 &&
+        unzip -tq "$OUTPUT" >/dev/null 2>&1
+}
+
+cleanup_stale_texture_temps() {
+    # TexCompress writes *.tmp and atomically renames completed entries. A
+    # killed session can leave only these temporary files behind.
+    if [ -d "$TEXTURE_CACHE_DEFAULT" ]; then
+        find "$TEXTURE_CACHE_DEFAULT" -maxdepth 1 -type f -name '*.tmp' -delete 2>/dev/null || true
+    fi
+}
+
+if ! cached_jar_is_valid; then
+    if [ -f "$OUTPUT" ] || [ -f "$STAMP" ]; then
+        echo "[launcher] cached patched jar failed validation; rebuilding"
+        rm -f "$OUTPUT" "$STAMP"
+    fi
     echo "[launcher] building patched jar; upstream warns first build may take about 15 minutes"
+    start_resource_notice
     TEMP_DIR="$APP_DIR/cache/.build-$BUILD_ID-$$"
     rm -rf "$TEMP_DIR"
     mkdir -p "$TEMP_DIR" "$BUILD_DIR"
@@ -99,6 +227,7 @@ if [ ! -f "$OUTPUT" ] || [ ! -f "$STAMP" ] ||
         rc=$?
         echo "[launcher] patch failed rc=$rc; source jar was retained"
         rm -rf "$TEMP_DIR"
+        stop_resource_notice
         exit "$rc"
     fi
     mv "$TEMP_DIR/desktoppatched.jar" "$OUTPUT"
@@ -109,6 +238,15 @@ if [ ! -f "$OUTPUT" ] || [ ! -f "$STAMP" ] ||
     } >"$TEMP_DIR/ready.txt"
     mv "$TEMP_DIR/ready.txt" "$STAMP"
     rm -rf "$TEMP_DIR"
+    echo "[launcher] resource release finished"
+    if [ -f "$TEXTURE_CACHE_READY" ]; then
+        if [ -n "${NOTICE_PID:-}" ]; then
+            sleep 2
+        fi
+        stop_resource_notice
+    elif [ -n "${NOTICE_PID:-}" ]; then
+        echo "[launcher] texture cache is not ready; notice stays until the game draws"
+    fi
 else
     echo "[launcher] using cached $OUTPUT"
 fi
@@ -152,6 +290,7 @@ PAUSED_MENU_STARTS=()
 MENU_WATCHDOG=""
 INPUT_PID=""
 EXIT_GUARD_PID=""
+WESTON_COMMAND=""
 
 resume_menu() {
     local index pid birth
@@ -222,6 +361,10 @@ cleanup() {
         fi
     done
     resume_menu
+    stop_resource_notice
+    if [ -n "${WESTON_COMMAND:-}" ]; then
+        rm -f "$WESTON_COMMAND"
+    fi
     if [ -n "$MENU_WATCHDOG" ]; then
         kill "$MENU_WATCHDOG" 2>/dev/null || true
         wait "$MENU_WATCHDOG" 2>/dev/null || true
@@ -259,10 +402,17 @@ export LIBGL_MIPMAP="${LIBGL_MIPMAP:-3}"
 export LIBGL_FORCE16BITS="${LIBGL_FORCE16BITS:-1}"
 export TEXCOMPRESS_FORCE="${TEXCOMPRESS_FORCE:-astc}"
 case "$TEXCOMPRESS_FORCE" in
-    astc) TEXTURE_CACHE_DEFAULT="$APP_DIR/cache/texcache" ;;
-    etc2) TEXTURE_CACHE_DEFAULT="$APP_DIR/cache/texcache-etc2" ;;
+    astc)
+        TEXTURE_CACHE_DEFAULT="$APP_DIR/cache/texcache"
+        TEXTURE_CACHE_READY="$TEXTURE_CACHE_DEFAULT/.ready"
+        ;;
+    etc2)
+        TEXTURE_CACHE_DEFAULT="$APP_DIR/cache/texcache-etc2"
+        TEXTURE_CACHE_READY="$TEXTURE_CACHE_DEFAULT/.ready"
+        ;;
     *) echo "[launcher] unsupported texture format: $TEXCOMPRESS_FORCE"; exit 3 ;;
 esac
+cleanup_stale_texture_temps
 export CRUSTY_BLOCK_INPUT="${CRUSTY_BLOCK_INPUT:-1}"
 
 # LWJGL 2 looks for the exact libopenal.so filename in its native library
@@ -334,19 +484,48 @@ run_game() {
             echo "[launcher] Weston diagnostic runtime not found"
             return 3
         fi
-        if [ "$LAUNCH_MODE" = "nested-wayland" ]; then
-            "$WESTON_DIR/westonwrap.sh" wayland gl kiosk crusty_glx_gl4es \
-                PATH="$PATH" JAVA_HOME="$JAVA_HOME" \
-                XDG_DATA_HOME="$APP_DIR/saves" WAYLAND_DISPLAY= \
-                /bin/bash "$APP_DIR/run-java.sh" "${JAVA_ARGS[@]}"
-        else
-            WESTON_HEADLESS_WIDTH=1024 \
-            WESTON_HEADLESS_HEIGHT=768 \
-            "$WESTON_DIR/westonwrap.sh" headless noop kiosk crusty_glx_gl4es \
-                PATH="$PATH" JAVA_HOME="$JAVA_HOME" \
-                XDG_DATA_HOME="$APP_DIR/saves" WAYLAND_DISPLAY= \
-                /bin/bash "$APP_DIR/run-java.sh" "${JAVA_ARGS[@]}"
+        # westonwrap evals its command and library paths without quotes.
+        # Hand it one spaceless script, whose own quoting preserves the
+        # official directory name.
+        WESTON_COMMAND=/tmp/sts-rgds-launch-$$.sh
+        {
+            echo '#!/bin/bash'
+            echo 'set -eu'
+            printf 'cd %q || exit 1\n' "$APP_DIR"
+            # westonwrap uses eval and cannot safely carry preload paths with
+            # spaces. Symlinks in /tmp keep the official app directory name
+            # while giving the dynamic loader spaceless library paths.
+            printf 'PRELOAD_DIR=/tmp/sts-rgds-preload-%s\n' "$$"
+            echo 'mkdir -p "$PRELOAD_DIR"'
+            printf 'ln -sf %q "$PRELOAD_DIR/librgds-dual.so"\n' "$APP_DIR/librgds-dual.so"
+            printf 'ln -sf %q "$PRELOAD_DIR/libwrap.so"\n' "$APP_DIR/libwrap.so"
+            echo 'trap '\''rm -rf "$PRELOAD_DIR"'\'' EXIT'
+            printf 'export LD_PRELOAD="$PRELOAD_DIR/librgds-dual.so:$PRELOAD_DIR/libwrap.so${LD_PRELOAD:+:$LD_PRELOAD}"\n'
+            printf 'export XDG_DATA_HOME=%q\n' "$APP_DIR/saves"
+            printf 'export JAVA_HOME=%q\n' "$JAVA_HOME"
+            printf 'export PATH=%q:"$PATH"\n' "$JAVA_HOME/bin"
+            printf 'exec /bin/bash %q' "$APP_DIR/run-java.sh"
+            for arg in "${JAVA_ARGS[@]}"; do
+                printf ' %q' "$arg"
+            done
+            printf '\n'
+        } >"$WESTON_COMMAND"
+        chmod +x "$WESTON_COMMAND"
+        if [ "$LAUNCH_MODE" != "nested-wayland" ]; then
+            WESTON_HEADLESS_WIDTH=1024
+            WESTON_HEADLESS_HEIGHT=768
+            export WESTON_HEADLESS_WIDTH WESTON_HEADLESS_HEIGHT
         fi
+        (
+            cd /tmp || exit 1
+            unset WRAPPED_LIBRARY_PATH
+            unset WRAPPED_PRELOAD
+            if [ "$LAUNCH_MODE" = "nested-wayland" ]; then
+                exec "$WESTON_DIR/westonwrap.sh" wayland gl kiosk crusty_glx_gl4es "$WESTON_COMMAND"
+            else
+                exec "$WESTON_DIR/westonwrap.sh" headless noop kiosk crusty_glx_gl4es "$WESTON_COMMAND"
+            fi
+        )
         return $?
     fi
     /bin/bash "$APP_DIR/run-java.sh" "${JAVA_ARGS[@]}"
@@ -408,15 +587,41 @@ if ! kill -0 "$INPUT_PID" 2>/dev/null; then
     exit 3
 fi
 echo "[launcher] input mapper pid=$INPUT_PID exit guard pid=$EXIT_GUARD_PID"
+if [ -z "${NOTICE_PID:-}" ] && [ ! -f "$TEXTURE_CACHE_READY" ]; then
+    echo "[launcher] texture cache is incomplete; showing the resource notice"
+    start_resource_notice
+fi
 run_game &
 GAME_PID=$!
 printf '%s\n' "$GAME_PID" >"$APP_DIR/logs/game.pid"
+if [ -n "${NOTICE_PID:-}" ]; then
+    notice_pid=$NOTICE_PID
+    (
+        # weston-terminal can exit before its shell/window does. Readiness is
+        # owned by the game session, never by the terminal client PID.
+        while kill -0 "$GAME_PID" 2>/dev/null; do
+            if grep -q '\[rgds-r3\] frames=' "$LOG" 2>/dev/null; then
+                mkdir -p "$TEXTURE_CACHE_DEFAULT"
+                printf 'first_frame=%s\n' "$(date -Iseconds)" >"$TEXTURE_CACHE_READY"
+                printf '%s\n' "[launcher] texture cache ready after first frame" >>"$LOG"
+                kill "$notice_pid" 2>/dev/null || true
+                exit 0
+            fi
+            sleep 1
+        done
+    ) &
+    NOTICE_WATCHER=$!
+fi
 
 (
     while :; do
         pid="${GAME_PID:-}"
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
             printf '\n[resources] %s\n' "$(date -Iseconds)"
+            if [ -d "$TEXTURE_CACHE_DEFAULT" ]; then
+                echo "texture_cache_files=$(find "$TEXTURE_CACHE_DEFAULT" -maxdepth 1 -type f -name '*.tex' 2>/dev/null | wc -l)"
+                echo "texture_cache_kib=$(du -sk "$TEXTURE_CACHE_DEFAULT" 2>/dev/null | awk '{print $1 + 0}')"
+            fi
             java_pid=$(cat "$SESSION.java.pid" 2>/dev/null || true)
             if [ -n "$java_pid" ] && [ -r "/proc/$java_pid/status" ]; then
                 echo "java_pid=$java_pid"

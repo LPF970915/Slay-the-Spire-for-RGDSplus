@@ -28,11 +28,13 @@ mkdir -p "$WORK_DIR/assets"
 CLEANED_ZIP="$WORK_DIR/cleaned.zip"
 PATCHED_ZIP="$WORK_DIR/patched.zip"
 
-echo "[patch] extracting assets"
+echo "[release] phase=extract-assets"
 unzip -q "$INPUT_ZIP" "font/*" "images/*" "audio/*" -d "$WORK_DIR/assets"
+echo "[release] phase=compress-audio"
 "$PYTHON" "$GAMEDIR/tools/ogg.py" "$WORK_DIR/assets/audio" \
     -b 12 --resample 11025 --downmix -v
 
+echo "[release] phase=clean-source"
 echo "[patch] creating clean source copy"
 cp "$INPUT_ZIP" "$CLEANED_ZIP"
 (
@@ -40,6 +42,7 @@ cp "$INPUT_ZIP" "$CLEANED_ZIP"
     zip -q -d "$CLEANED_ZIP" "font/*" "images/*" "audio/*"
 )
 
+echo "[release] phase=apply-xdelta"
 echo "[patch] applying xdelta"
 "$XDELTA" -d -s "$CLEANED_ZIP" "$GAMEDIR/tools/steam.xdelta" "$PATCHED_ZIP"
 rm -f "$CLEANED_ZIP"
@@ -56,6 +59,7 @@ rm -f "$CLEANED_ZIP"
     rm -f "$WORK_DIR/libopenal.so"
 )
 
+echo "[release] phase=add-processed-assets"
 echo "[patch] adding processed assets"
 cp "$GAMEDIR/libgdx-controllers-desktop.so" "$WORK_DIR/assets/"
 (
@@ -63,7 +67,9 @@ cp "$GAMEDIR/libgdx-controllers-desktop.so" "$WORK_DIR/assets/"
     zip -q -r "$PATCHED_ZIP" font images audio libgdx-controllers-desktop.so
 )
 
+echo "[release] phase=verify-archive"
 unzip -tq "$PATCHED_ZIP" >/dev/null
 mkdir -p "$(dirname -- "$OUTPUT_ZIP")"
 mv "$PATCHED_ZIP" "$OUTPUT_ZIP"
+echo "[release] phase=complete"
 echo "[patch] committed $OUTPUT_ZIP"

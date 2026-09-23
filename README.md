@@ -1,119 +1,102 @@
 # Slay the Spire for RGDSplus
 
-This is a game-free RGDSplus adapter for the Steam/desktop release of Slay the
-Spire. The purchased `desktop-1.0.jar` is supplied by the user and is never
-committed, packaged, publicly uploaded, modified in place, or deleted.
+RGDSplus 双屏适配项目，移植维护：**Blood_roc**。
 
-The first milestone is a stable single-screen 1024x768 port on RGDSplus.
-Dual-screen layout work is intentionally deferred until the single-screen
-runtime, audio, saves, and scene transitions have been verified.
+> **本仓库及 Releases 仅发布适配包，不包含《杀戮尖塔》游戏本体。**
+> 请购买正版 Steam/PC 版本，并自行提供合法取得的 `desktop-1.0.jar`。
+> 本项目不提供破解、盗版、授权绕过、Steam 凭据或完整游戏资源。
 
-## Plan and acceptance
+这是面向 RGDSplus 双 1024×768 屏幕、Linux/Wayland 固件、PortMaster
+环境的非官方适配项目。它不是 Mega Crit 或 Steam 的官方发行版。
 
-- [Complete porting plan (Chinese)](docs/RGDSPLUS_PORT_MASTER_PLAN.zh-CN.md)
-- [Acceptance matrix and evidence status (Chinese)](docs/RGDSPLUS_ACCEPTANCE_MATRIX.zh-CN.md)
-- [Native 4:3 rendering fix and verification limits (Chinese)](docs/RENDER_FIX_20260920.zh-CN.md)
-- [Dual-screen interface allocation and cross-screen targeting research (Chinese)](docs/DUAL_SCREEN_INTERFACE_RESEARCH.zh-CN.md)
-- [P0 dual-screen design review and gap checklist (Chinese)](docs/P0_DUAL_SCREEN_DESIGN.zh-CN.md)
-- [P1 standalone geometry prototype and device evidence (Chinese)](docs/P1_GEOMETRY_PROTOTYPE.zh-CN.md)
-- [R1 frozen geometry baseline and deferred work (Chinese)](docs/R1_CLOSEOUT.zh-CN.md)
-- [R2 output and touch accuracy verification (Chinese)](docs/R2_TOUCH_PROBE.zh-CN.md)
-- [R3 native dual-screen UI and device screenshots (Chinese)](docs/R3_NATIVE_UI.zh-CN.md)
-- [Frozen R3 baseline and non-destructive rollback (Chinese)](docs/R3_BASELINE_20260920.zh-CN.md)
-- [R3 complete backgrounds and small-screen revision (Chinese)](docs/R3_SMALL_SCREEN.zh-CN.md)
-- [R3 30 FPS profiling and remaining transition stalls (Chinese)](docs/R3_PERFORMANCE.zh-CN.md)
-- [R4 all-page routing, isolated entry and per-page layout checklist (Chinese)](docs/R4_ALL_PAGES.zh-CN.md)
-- [R4 user layout revision: continuous tower/map and curved targeting (Chinese)](docs/R4_LAYOUT_REVISION.zh-CN.md)
-- [Physically verified touch integration contract (Chinese)](docs/RGDSPLUS_TOUCH_CONTRACT.zh-CN.md)
+## 下载
 
-The user confirmed single-screen stability on September 20, 2026 and authorized
-dual-screen research. The preferred design puts combat visuals on the upper
-screen and interactive controls on the lower screen, with directional touch
-targeting and the existing controller fallback. Research authorization does not
-mark unexecuted acceptance tests as passed. The stable installed runtime remains
-single-screen. An isolated, game-free dual-screen geometry probe lives in
-`prototype/p1/`; it is not integrated into the game.
-The original top toolbar stays on the upper screen with controller navigation.
-Lower-screen views reuse native background layers; migrated combat foreground
-decorations appear only on the lower screen. The user approved P0 and explicitly
-authorized P1 on September 20, 2026. The probe has its own card-2 menu entry,
-directory, and logs and does not read or modify game saves.
-R1 is now frozen at aim3 for its geometry scope. Final artwork and feel are
-deferred to real-game integration. R2 is a separate silent card-2 probe for
-output identity, raw touch accuracy, and lifecycle recovery; physical accuracy
-and long-run acceptance remain explicitly separate from software tests.
-The user subsequently authorized remote continuation into real-game UI.
-`prototype/r3/` now provides a separate silent card-2 native UI candidate:
-upper combat/top bar, lower hand/controls/background, native controller targeting,
-and cross-screen arrow rendering. Touch is capture-only pending actual game
-hitbox integration. This does not mark the remaining R2 physical tests passed.
+从 [GitHub Releases](https://github.com/LPF970915/Slay-the-Spire-for-RGDSplus/releases)
+下载正式命名的 `Slay the Spire for RGDSplus.zip`。
 
-## Local source
+Release 附件是适配包，不是游戏本体，也不是 GitHub 自动生成的
+“Source code”压缩包。发布包旁提供 `.sha256` 校验文件。
 
-The current private test source is:
+## 安装
 
-`D:\Program Files\Steam\steamapps\common\SlayTheSpire\desktop-1.0.jar`
+1. 退出游戏，升级前备份内存卡上的 `saves/`。
+2. 将压缩包解压到卡二游戏数据分区根目录，合并 `Ports`，不要形成
+   `Ports/Ports/`。
+3. 从正版 PC 安装目录复制 `desktop-1.0.jar` 到：
 
-The packaging tools accept an explicit path, but only copy or read it into a
-temporary build cache. They do not add it to this repository.
+   ```text
+   /mnt/sdcard/Ports/Slay the Spire for RGDSplus/
+   ```
 
-## Project boundaries
+4. 从 Ports 菜单启动 **Slay the Spire for RGDSplus**。
 
-- `upstream/` contains immutable PortMaster adapter files and checksums.
-- `platform/` contains RGDSplus-specific launch and safe-patching logic.
-- `packaging/` contains the game-free device package entrypoint and install notes.
-- `tools/` contains source fetching, package assembly, and static checks.
-- `prototype/p1/` contains the standalone silent dual-screen geometry probe.
-- `prototype/r2/` contains the isolated output/touch measurement probe.
-- `prototype/r3/` contains the isolated real-game UI routing adapter, without assets.
-- `private/`, `cache/`, `saves/`, and device logs are ignored.
+目录结构：
 
-## Build
+```text
+Ports/
+  Slay the Spire for RGDSplus.sh
+  Slay the Spire for RGDSplus/
+    game-launch.sh
+    desktop-1.0.jar        <- 用户自行提供，发布包不包含
+    cache/
+    saves/
+    logs/
+```
 
-Fetch the fixed upstream PortMaster snapshot, then assemble a game-free package:
+首次启动会从正版 JAR 生成隔离的补丁 JAR 和纹理缓存。释放资源期间会显示
+阶段、计数和心跳信息；请勿断电或拔卡。原始正版文件不会被覆盖，失败时可
+删除未完成的 `cache/` 后重试。后续启动会复用已完成缓存。
+
+## 当前适配
+
+- 上屏保留战斗、地图、角色、商人及主要演出；下屏承担手牌和操作区域。
+- 教程、事件、奖励、商店购买、地图、牌组、遗物、药水和设置等页面按双屏
+  交互规则分配。
+- 下屏实体触摸使用设备本地坐标；保留手柄导航和独立应急退出。
+- 事件触发战斗使用与普通战斗一致的扇形手牌和双屏布局。
+- 资源释放、补丁、纹理缓存和启动失败会写入日志，并显示可观察的进度。
+
+本版本仍是测试发布。全流程、所有机制、实体触摸精度、不同固件兼容性和
+长期稳定性尚未全部验收；软件注入、回放和截图不能替代真实触摸验证。
+
+## 更新与反馈
+
+更新前退出游戏并备份整个 `saves/`。保留正版 JAR、存档和日志，只替换
+适配文件。反馈问题时请注明版本、固件、输入来源、复现步骤和日志时间，
+并先脱敏。不要上传正版游戏文件、派生 JAR、缓存、账号信息或未经检查的存档。
+
+## 开发构建
+
+构建适配器需要用户本机已有的正版 JAR；脚本不会下载或提交游戏本体：
 
 ```powershell
-py -3 tools/fetch_upstream.py
+$env:STS_GAME_JAR = "D:\path\to\desktop-1.0.jar"
 $env:JAVA_HOME = "C:\Program Files\Java\jdk-25"
-py -3 tools/build_input_agent.py
-# Build platform/librgds-sdl.so with an ARM64 Linux cross-compiler.
-py -3 tools/assemble_package.py
-py -3 tools/test_package.py
+py -3 prototype/r3/build.py
+py -3 tools/assemble_r4_adapter_package.py
+py -3 tools/test_touch_contract.py
+py -3 -m unittest discover -s prototype/p1 -v
 ```
 
-The SDL shim build uses `aarch64-linux-gnu-gcc -shared -fPIC -O2 -Wall
--Wextra -Werror -o platform/librgds-sdl.so platform/rgds_sdl.c -ldl`
-from the repository root in Linux/WSL. Set `JAVA_HOME` to the installed JDK.
+构建输出 `dist/Slay the Spire for RGDSplus.zip`，适配包审计会拒绝游戏本体、
+存档、缓存、日志和凭据。
 
-The result is written below `dist/Ports/`. It does not contain
-`desktop-1.0.jar`.
+## 发布与权利声明
 
-For a private local device test, provide the game file separately. The
-deployment tool never puts it in the package:
+本人仅通过本仓库及其 Releases 公开发布不含游戏本体的适配包。未经授权，
+不得将本项目、作者署名或项目名义用于收费售卖、付费预装、商业整合包或
+冒充官方服务。原创适配部分的使用范围见 [LICENSE.md](LICENSE.md)。
 
-```powershell
-$env:RGDSPLUS_SSH_PASSWORD = "..."
-python tools/deploy_p0.py --game "D:\Program Files\Steam\steamapps\common\SlayTheSpire\desktop-1.0.jar" --launch
+PortMaster 及其他第三方组件继续适用各自许可证；详见
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。本项目与游戏权利人不存在
+官方隶属、授权背书或合作关系。
+
+## 项目结构
+
+```text
+docs/       设计、触摸契约、适配说明与验收边界
+packaging/  公开启动器、安装说明和第三方声明
+platform/   RGDSplus 输入与安全补丁组件
+prototype/  P1 触摸参考链路与 R3 双屏适配实现
+tools/      构建、打包、测试和公开载荷审计工具
 ```
-
-The password environment variable is optional; without it the tool prompts.
-Do not commit the password or the deployed game file.
-
-## Device install
-
-Copy the generated `Ports/` directory to the device's `/mnt/sdcard/Ports/`
-(card 2). Card 1 (`/mnt/mmc/Ports/`) is also supported.
-Copy your own `desktop-1.0.jar` into the installed `SlayTheSpire/` directory.
-Launch `Slay the Spire for RGDSplus.sh`.
-
-The launcher uses the PortMaster Weston wrapper runtime by default so the
-desktop LWJGL build gets an XWayland/GL4ES-compatible display. Crusty's SDL
-window connects directly to the firmware Wayland socket, while the auxiliary
-headless XWayland handles LWJGL's X11 calls. It does not
-alter the device tree, install udev rules, or change the touchscreen mode.
-
-Deployment defaults to card 2; select `--remote-ports /mnt/mmc/Ports` for card 1.
-After the initial private upload, omit `--game` to update only the adapter.
-The private test device's original card-1 entry now forwards to card 2 using
-`packaging/card1-forwarder.sh`. Removing card 2 makes that entry fail explicitly;
-it does not start an older card-1 copy or split saves across cards.

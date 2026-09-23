@@ -1,4 +1,4 @@
-"""Inspect the staged snapshot before uploading this private adapter baseline."""
+"""Inspect the staged snapshot before uploading the public adapter repository."""
 
 import hashlib
 import io
@@ -22,6 +22,10 @@ BLOCKED = {
     "cache", "private", "saves", "validation", "upstream", "dist",
     "__pycache__", "betaPreferences", "sendToDevs", "logs",
 }
+SENSITIVE_TEXT = (
+    re.compile(r"192\.168\.\d+\.\d+"),
+    re.compile(r"(?i)Program\s+Files[/\\]+Steam[/\\]+"),
+)
 
 
 def main():
@@ -60,6 +64,8 @@ def main():
                 r"""(?i)password\s*=\s*['"](?!\.\.\.['"])[^'"]+['"]""",
             ):
                 assert not re.search(pattern, text), "Possible credential in " + name
+            for pattern in SENSITIVE_TEXT:
+                assert not pattern.search(text), "Private device/path literal in " + name
         entries.append(dict(path=name, bytes=len(data), sha256=hashlib.sha256(data).hexdigest()))
     destination = ROOT / "validation/baseline-git-payload.json"
     destination.parent.mkdir(exist_ok=True)

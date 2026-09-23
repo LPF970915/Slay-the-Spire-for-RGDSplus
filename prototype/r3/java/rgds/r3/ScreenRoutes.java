@@ -16,6 +16,7 @@ public final class ScreenRoutes {
         add(lower, "U02", "screens.mainMenu.MenuPanelScreen");
         add(lower, "U03", "screens.mainMenu.SaveSlotScreen", "ui.panels.RenamePopup",
                 "ui.panels.DeleteSaveConfirmPopup");
+        add(lower, "U04", "ui.panels.SeedPanel");
         add(lower, "U05", "screens.custom.CustomModeScreen");
         add(lower, "U13", "screens.MasterDeckViewScreen", "screens.DrawPileViewScreen",
                 "screens.DiscardPileViewScreen", "screens.ExhaustPileViewScreen");
@@ -24,11 +25,11 @@ public final class ScreenRoutes {
         add(lower, "U18", "screens.CardRewardScreen");
         add(lower, "U17", "screens.CombatRewardScreen");
         add(lower, "U19", "screens.select.BossRelicSelectScreen");
-        add(lower, "U20", "shop.ShopScreen", "shop.Merchant");
+        add(lower, "U20", "shop.ShopScreen");
         add(lower, "U22", "rooms.CampfireUI");
         add(lower, "U26", "screens.options.SettingsScreen", "screens.options.InputSettingsScreen",
                 "screens.options.OptionsPanel");
-        add(lower, "U27", "ui.FtueTip", "screens.options.ConfirmPopup",
+        add(lower, "U27", "ui.FtueTip", "ui.MultiPageFtue", "screens.options.ConfirmPopup",
                 "screens.mainMenu.EarlyAccessPopup", "screens.mainMenu.SyncMessage");
         add(lower, "U29", "screens.compendium.CardLibraryScreen",
                 "screens.compendium.RelicViewScreen", "screens.compendium.PotionViewScreen");
@@ -46,6 +47,7 @@ public final class ScreenRoutes {
         add(upper, "U01", "screens.splash.SplashScreen", "screens.DungeonTransitionScreen");
         add(upper, "U04", "screens.charSelect.CharacterSelectScreen");
         add(upper, "U06", "neow.NeowEvent", "cutscenes.NeowNarrationScreen");
+        add(upper, "U20", "shop.Merchant");
         add(upper, "U21", "events.GenericEventDialog", "events.RoomEventDialog");
         add(upper, "U24", "ui.panels.TopPanel");
         add(upper, "U12", "ui.panels.PotionPopUp");

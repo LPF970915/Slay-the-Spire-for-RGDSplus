@@ -43,7 +43,7 @@ def main() -> None:
         default=ROOT / "dist/SlayTheSpire_RGDSplus_P0_game-free.zip",
     )
     parser.add_argument("--game", type=Path)
-    parser.add_argument("--host", default="192.168.31.116")
+    parser.add_argument("--host", default=os.getenv("RGDSPLUS_SSH_HOST"))
     parser.add_argument("--user", default="root")
     parser.add_argument("--launch", action="store_true")
     parser.add_argument(

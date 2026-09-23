@@ -29,6 +29,8 @@ public final class TransformTest {
             "com/megacrit/cardcrawl/monsters/AbstractMonster",
             "com/megacrit/cardcrawl/helpers/Hitbox",
             "com/badlogic/gdx/graphics/g2d/SpriteBatch",
+            "com/megacrit/cardcrawl/helpers/input/InputHelper",
+            "com/badlogic/gdx/backends/lwjgl/LwjglInput",
             "com/badlogic/gdx/backends/lwjgl/LwjglApplicationConfiguration"
         };
         java.util.Set<String> inventory = new java.util.LinkedHashSet<String>(java.util.Arrays.asList(names));
@@ -43,6 +45,11 @@ public final class TransformTest {
         inventory.add("com/megacrit/cardcrawl/metrics/Metrics");
         inventory.add("com/megacrit/cardcrawl/vfx/InfiniteSpeechBubble");
         inventory.add("com/megacrit/cardcrawl/vfx/SpeechTextEffect");
+        inventory.add("com/megacrit/cardcrawl/core/GameCursor");
+        inventory.add("com/megacrit/cardcrawl/cards/AbstractCard");
+        inventory.add("com/megacrit/cardcrawl/cards/Soul");
+        inventory.add("com/megacrit/cardcrawl/ui/buttons/ProceedButton");
+        inventory.addAll(rgds.r3.DualAgent.COMBAT_EFFECTS.keySet());
         for (String control : rgds.r3.DualAgent.SMALL_CONTROLS) {
             String prefix = control.startsWith("Menu") ? "screens/mainMenu/" : "ui/buttons/";
             inventory.add("com/megacrit/cardcrawl/" + prefix + control);

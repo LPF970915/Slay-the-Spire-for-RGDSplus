@@ -63,6 +63,23 @@ public final class UiTransformTest {
         }
         close(AimCurve.bodyScale(0, 1), 7.4f / 18);
         close(AimCurve.bodyScale(.95f, 1), 15f / 18);
+        for (float sx : new float[]{3, 512, 1021}) {
+            for (float sy : new float[]{819, 1100, 1550}) {
+                for (float ex : new float[]{30, 512, 994}) {
+                    curve.setLocked(sx, sy, ex, 50);
+                    curve.point(point, 0);
+                    close(point.x, sx); close(point.y, sy);
+                    curve.point(point, 1);
+                    close(point.x, ex); close(point.y, 50);
+                    for (int i = 0; i <= 100; i++) {
+                        curve.point(point, i / 100f);
+                        if (point.x < 0 || point.x > 1024 || point.y < 0 ||
+                                !Float.isFinite(curve.angle(i / 100f)))
+                            throw new AssertionError("Locked curve stays bounded with a fixed endpoint");
+                    }
+                }
+            }
+        }
         for (float y : new float[]{0, 384, 768, 1152, 1536}) {
             float ndc = 2 * (.5f * y) / 768 - 1;
             close((ndc + 1) * 1536 / 2, y);

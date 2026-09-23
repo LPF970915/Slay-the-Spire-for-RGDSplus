@@ -21,7 +21,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=("deploy", "run", "status", "fetch", "stop",
                                            "tests", "inject-grid", "key", "freeze", "crash"))
-    parser.add_argument("--host", default="192.168.31.116")
+    parser.add_argument("--host", default=os.getenv("RGDSPLUS_SSH_HOST"))
     parser.add_argument("--seconds", type=float, default=15)
     parser.add_argument("--source", choices=("physical-unconfirmed", "model-replay", "evdev-injection"),
                         default="physical-unconfirmed")

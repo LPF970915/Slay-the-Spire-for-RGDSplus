@@ -65,12 +65,20 @@ def main():
     parser.add_argument("--recover", type=Path)
     parser.add_argument("--seconds", type=float, default=1200)
     parser.add_argument("--fps", type=int, choices=(24, 30, 60), default=30)
-    parser.add_argument("--heap-mb", type=int, choices=(128, 140, 160, 180), default=140)
-    parser.add_argument("--initial-heap-mb", type=int, choices=(32, 64, 128), default=64)
+    r4 = ROOT.name in ("Slay the Spire for RGDSplus", "SlayTheSpireDualR4", "SlayTheSpireDualR4Review")
+    parser.add_argument("--heap-mb", type=int, choices=(128, 140, 160, 180), default=128 if r4 else 140)
+    parser.add_argument("--initial-heap-mb", type=int, choices=(32, 64, 128), default=32 if r4 else 64)
     parser.add_argument("--gc", choices=("Serial", "G1", "Parallel"), default="Serial")
+    parser.add_argument("--jit-tier", type=int, choices=(1, 4), default=1 if r4 else 4)
     parser.add_argument("--diagnostic-io", choices=("card", "ram"), default="ram")
     parser.add_argument("--page-probe", action="store_true")
     parser.add_argument("--review", action="store_true")
+    parser.add_argument("--audio", dest="silent", action="store_false")
+    parser.add_argument("--silent", dest="silent", action="store_true")
+    parser.add_argument("--touch-live", dest="touch_live", action="store_true")
+    parser.add_argument("--touch-capture", dest="touch_live", action="store_false")
+    parser.set_defaults(silent=ROOT.name != "Slay the Spire for RGDSplus",
+                        touch_live=ROOT.name == "Slay the Spire for RGDSplus")
     args = parser.parse_args()
     if args.recover:
         recover(args.recover)
@@ -78,6 +86,7 @@ def main():
     (ROOT / "logs").mkdir(exist_ok=True)
     locks = []
     for app in dict.fromkeys((ROOT, ROOT.parent / "SlayTheSpireDualR3",
+                             ROOT.parent / "Slay the Spire for RGDSplus",
                              ROOT.parent / "SlayTheSpireDualR4",
                              ROOT.parent / "SlayTheSpireDualR4Review",
                              ROOT.parent / "SlayTheSpireGeometryP1", ROOT.parent / "SlayTheSpireTouchR2")):
@@ -136,14 +145,18 @@ def main():
         env = os.environ.copy()
         env.update(RGDS_R3_FPS=str(args.fps), RGDS_R3_GC=args.gc,
                    SLAYTHESPIRE_XMX=f"{args.heap_mb}M", RGDS_R3_PROFILE="1",
-                   RGDS_R3_XMS=str(args.initial_heap_mb))
-        if args.page_probe and ROOT.name != "SlayTheSpireDualR4":
+                   RGDS_R3_XMS=str(args.initial_heap_mb), RGDS_R4_JIT_TIER=str(args.jit_tier))
+        if args.page_probe and ROOT.name not in (
+                "Slay the Spire for RGDSplus", "SlayTheSpireDualR4Review"):
             raise RuntimeError("Page probe requires the separate R4 save clone")
         if args.review and ROOT.name != "SlayTheSpireDualR4Review":
             raise RuntimeError("Review fixtures require their disposable save clone")
         env["RGDS_R4_REVIEW"] = "1" if args.review else "0"
+        env["RGDS_STS_SILENT"] = "1" if args.silent else "0"
+        env["RGDS_R4_TOUCH_LIVE"] = "1" if args.touch_live else "0"
+        message(f"[r4-input] audio={'muted' if args.silent else 'enabled'} touch={'native-lower-pointer' if args.touch_live else 'capture-only'}")
         env["RGDS_R4_PAGE_PROBE"] = "1" if args.page_probe else "0"
-        message(f"[r3-profile] fps={args.fps} heap_mb={args.heap_mb} initial_heap_mb={args.initial_heap_mb} gc={args.gc} io={args.diagnostic_io}")
+        message(f"[r3-profile] fps={args.fps} heap_mb={args.heap_mb} initial_heap_mb={args.initial_heap_mb} gc={args.gc} jit_tier={args.jit_tier} io={args.diagnostic_io}")
         runtime = Path(state["runtime"])
         env.update(RGDS_DIAGNOSTICS_DIR=str(runtime),
                    RGDS_CAPTURE_PATH=str(runtime / "capture.pam"),

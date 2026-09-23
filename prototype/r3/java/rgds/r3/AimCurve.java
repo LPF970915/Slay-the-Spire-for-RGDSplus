@@ -15,6 +15,13 @@ public final class AimCurve {
         control.set(x0 - (x1 - x0) / 4, y1 + (y1 - y0) / 2);
     }
 
+    public void setLocked(float x0, float y0, float x1, float y1) {
+        set(x0, y0, x1, y1);
+        // Keep the native quadratic shape without sending its control point off-panel.
+        control.x = Math.max(16, Math.min(1008, control.x));
+        control.y = Math.max(16, control.y);
+    }
+
     public void point(Vector2 out, float t) {
         Bezier.quadratic(out, t, start, control, end, scratch);
     }
