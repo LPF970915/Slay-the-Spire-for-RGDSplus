@@ -142,6 +142,12 @@ echo 'notice lifecycle passed'
             with zipfile.ZipFile(path) as archive:
                 launcher = archive.read(PREFIX + "game-launch.sh")
                 self.assertEqual(launcher, generated_launcher())
+                self.assertEqual(
+                    archive.read(PREFIX + "runtime_preflight.sh"),
+                    ADAPTER_SOURCES["runtime_preflight.sh"].read_bytes(),
+                )
+                self.assertLess(launcher.index(b"if runtime_preflight; then"),
+                                launcher.index(b"SOURCE_SHA="))
                 self.assertNotIn(b"Slay the Spire for RGDSplus/supervisor.py", launcher)
                 for tool in ("xdelta3", "oggenc", "oggdec"):
                     name = PREFIX + "tools/" + tool

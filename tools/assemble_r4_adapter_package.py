@@ -20,7 +20,7 @@ UPSTREAM = ROOT / "upstream" / "slaythespire"
 HERE = ROOT / "prototype" / "r3"
 PREFIX = "Ports/Slay the Spire for RGDSplus/"
 ENTRY = "Ports/Slay the Spire for RGDSplus.sh"
-BUILD = "slay-the-spire-for-rgdsplus-adapter-20260923-14"
+BUILD = "slay-the-spire-for-rgdsplus-adapter-20260924-01"
 OUTPUT = ROOT / "dist" / "Slay the Spire for RGDSplus.zip"
 
 ADAPTER_SOURCES = {
@@ -37,6 +37,7 @@ ADAPTER_SOURCES = {
     "rgds-input-agent.jar": ROOT / "platform" / "rgds-input-agent.jar",
     "rgds_exit.py": ROOT / "platform" / "rgds_exit.py",
     "run-java.sh": ROOT / "packaging" / "run-java.sh",
+    "runtime_preflight.sh": ROOT / "packaging" / "runtime_preflight.sh",
     "slay.gptk": ROOT / "packaging" / "slay.gptk",
     "rgds-gamecontroller.txt": ROOT / "packaging" / "rgds-gamecontroller.txt",
     "patch_safe.sh": ROOT / "platform" / "patch_safe.sh",
@@ -146,7 +147,7 @@ def generated_manifest(files: dict[str, str]) -> bytes:
 
 
 def zip_info(name: str, executable: bool) -> zipfile.ZipInfo:
-    info = zipfile.ZipInfo(name, date_time=(2026, 9, 23, 0, 0, 0))
+    info = zipfile.ZipInfo(name, date_time=(2026, 9, 24, 0, 0, 0))
     info.create_system = 3
     info.external_attr = (0o100755 if executable else 0o100644) << 16
     info.compress_type = zipfile.ZIP_DEFLATED

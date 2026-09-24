@@ -54,7 +54,9 @@ class CombatGeometryTests(unittest.TestCase):
         jdk = Path("C:/Program Files/Java/jdk-25/bin")
         classes = ROOT / "prototype/r3/build/classes"
         subprocess.run([str(jdk / "javac.exe"), "--release", "11", "-cp", str(classes),
-                        "-d", str(classes), str(ROOT / "prototype/r3/AimPickerTest.java")], check=True)
+                        "-d", str(classes),
+                        str(ROOT / "prototype/r3/java/rgds/r3/AimPicker.java"),
+                        str(ROOT / "prototype/r3/AimPickerTest.java")], check=True)
         result = subprocess.run([str(jdk / "java.exe"), "-cp", str(classes), "AimPickerTest"],
                                 input=str(len(rows)) + "\n" + "\n".join(rows),
                                 text=True, capture_output=True)

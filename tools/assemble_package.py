@@ -48,6 +48,7 @@ def copy_required() -> None:
         shutil.copy2(UPSTREAM / name, APP / name)
     shutil.copy2(ROOT / "packaging" / "launch.sh", APP / "launch.sh")
     shutil.copy2(ROOT / "packaging" / "run-java.sh", APP / "run-java.sh")
+    shutil.copy2(ROOT / "packaging" / "runtime_preflight.sh", APP / "runtime_preflight.sh")
     shutil.copy2(ROOT / "packaging" / "slay.gptk", APP / "slay.gptk")
     shutil.copy2(ROOT / "packaging" / "info.displayconfig", APP / "info.displayconfig")
     shutil.copy2(ROOT / "packaging" / "rgds-gamecontroller.txt", APP / "rgds-gamecontroller.txt")

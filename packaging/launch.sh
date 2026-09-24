@@ -46,6 +46,7 @@ CONTROLFOLDER="${SLAYTHESPIRE_PORTMASTER:-}"
 if [ -z "$CONTROLFOLDER" ]; then
     for candidate in \
         "/mnt/ports/PortMaster" \
+        "/mnt/sdcard/Ports/PortMaster" \
         "/mnt/mmc/Ports/PortMaster" \
         "/mnt/mmc/Tools/PortMaster" \
         "/opt/system/Tools/PortMaster" \
@@ -186,6 +187,22 @@ stop_resource_notice() {
 trap 'stop_resource_notice; rm -rf "$LOCK_DIR"' EXIT
 trap 'exit 143' TERM HUP
 trap 'exit 130' INT
+
+if [ ! -r "$APP_DIR/runtime_preflight.sh" ]; then
+    echo "[preflight] missing runtime_preflight.sh; reinstall the complete adapter package"
+    exit 3
+fi
+source "$APP_DIR/runtime_preflight.sh"
+if runtime_preflight; then
+    :
+else
+    PREFLIGHT_RC=$?
+    if [ "$PREFLIGHT_RC" -ne 3 ]; then
+        preflight_error "运行时检查异常中断，退出码 $PREFLIGHT_RC。请检查本次启动日志。" || true
+    fi
+    show_preflight_failure
+    exit 3
+fi
 
 SOURCE_SHA=$(sha256sum "$APP_DIR/desktop-1.0.jar" | awk '{print $1}')
 BUILD_ID="${SOURCE_SHA}-p0-single-3"
