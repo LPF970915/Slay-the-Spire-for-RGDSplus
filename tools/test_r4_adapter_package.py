@@ -18,6 +18,7 @@ from assemble_r4_adapter_package import (
     validate_names,
     verify_archive,
 )
+from fetch_offline_runtimes import RUNTIMES
 
 
 class R4AdapterPackageTests(unittest.TestCase):
@@ -140,6 +141,9 @@ echo 'notice lifecycle passed'
             path = build(Path(directory) / "adapter.zip")
             verify_archive(path)
             with zipfile.ZipFile(path) as archive:
+                for runtime in RUNTIMES:
+                    self.assertIn(PREFIX + "runtime/offline/" + runtime, archive.namelist())
+                self.assertIn(PREFIX + "runtime/offline/SHA256SUMS", archive.namelist())
                 launcher = archive.read(PREFIX + "game-launch.sh")
                 self.assertEqual(launcher, generated_launcher())
                 self.assertEqual(

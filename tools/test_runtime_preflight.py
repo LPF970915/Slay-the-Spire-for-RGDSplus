@@ -134,6 +134,72 @@ cp -R "$fixture/java-seed" "$CONTROLFOLDER/libs/$java_name"
 cp -R "$fixture/weston-seed" "$CONTROLFOLDER/libs/weston_pkg_0.2"
 ''', assertions='test ! -e "$fixture/mount-events"\n')
 
+    def offline_setup(self):
+        return r'''
+mkdir -p "$APP_DIR/runtime/offline"
+cp "$CONTROLFOLDER/libs/"*.squashfs "$APP_DIR/runtime/offline/"
+mkdir "$APP_DIR/runtime/offline/libs"
+touch "$APP_DIR/runtime/offline/libs/libjpeg.so.8" "$APP_DIR/runtime/offline/libs/libXtst.so.6"
+(cd "$APP_DIR/runtime/offline" && sha256sum *.squashfs libs/* >SHA256SUMS)
+rm "$CONTROLFOLDER/libs/"*.squashfs
+'''
+
+    def test_offline_install_needs_no_shared_images(self):
+        self.replay(self.offline_setup(), assertions=r'''
+test "$(grep -c '^mount ' "$fixture/mount-events")" = 2
+test "$(grep -c '^umount ' "$fixture/mount-events")" = 2
+''')
+
+    def test_corrupt_offline_image_stops_before_mount_or_extraction(self):
+        self.replay(self.offline_setup() + r'''
+printf 'broken' >>"$APP_DIR/runtime/offline/$java_name.squashfs"
+''', "离线运行库缺失或校验失败",
+                    'test ! -e "$fixture/mount-events"\n')
+
+    def test_missing_one_offline_image_is_not_hidden_by_shared_install(self):
+        self.replay(self.offline_setup() + r'''
+cp "$APP_DIR/runtime/offline/"*.squashfs "$CONTROLFOLDER/libs/"
+rm "$APP_DIR/runtime/offline/weston_pkg_0.2.squashfs"
+''', "离线运行库缺失或校验失败")
+
+    def test_missing_offline_checksums(self):
+        self.replay(self.offline_setup() + r'''
+rm "$APP_DIR/runtime/offline/SHA256SUMS"
+''', "离线运行库缺失或校验失败")
+
+    def test_missing_offline_native_library(self):
+        self.replay(self.offline_setup() + r'''
+rm "$APP_DIR/runtime/offline/libs/libjpeg.so.8"
+''', "离线运行库缺失或校验失败")
+
+    def test_missing_transitive_weston_dependency(self):
+        self.replay(r'''
+cp -R "$fixture/weston-seed" "$CONTROLFOLDER/libs/weston_pkg_0.2"
+touch "$CONTROLFOLDER/libs/weston_pkg_0.2/wp_weston"
+mkdir "$fixture/bin"
+printf '#!/bin/sh\necho "libjpeg.so.8 => not found"\n' >"$fixture/bin/ldd"
+chmod +x "$fixture/bin/ldd"
+export PATH="$fixture/bin:$PATH"
+''', "底层依赖不完整")
+
+    def test_ldd_failure_is_not_ignored(self):
+        self.replay(r'''
+cp -R "$fixture/weston-seed" "$CONTROLFOLDER/libs/weston_pkg_0.2"
+touch "$CONTROLFOLDER/libs/weston_pkg_0.2/wp_weston"
+mkdir "$fixture/bin"
+printf '#!/bin/sh\nexit 1\n' >"$fixture/bin/ldd"
+chmod +x "$fixture/bin/ldd"
+export PATH="$fixture/bin:$PATH"
+''', "底层依赖不完整")
+
+    def test_offline_images_precede_shared_runtime_directories(self):
+        self.replay(self.offline_setup() + r'''
+mkdir -p "$CONTROLFOLDER/libs/$java_name/bin" "$CONTROLFOLDER/libs/weston_pkg_0.2"
+printf '#!/bin/sh\nexit 127\n' >"$CONTROLFOLDER/libs/$java_name/bin/java"
+printf '#!/bin/bash\nthis is invalid (\n' >"$CONTROLFOLDER/libs/weston_pkg_0.2/westonwrap.sh"
+chmod +x "$CONTROLFOLDER/libs/$java_name/bin/java" "$CONTROLFOLDER/libs/weston_pkg_0.2/westonwrap.sh"
+''', assertions='test "$(grep -c \'^mount \' "$fixture/mount-events")" = 2\n')
+
     def test_firmware_notice_contains_report_and_has_bounded_lifetime(self):
         source = SOURCE.replace("/usr/bin/weston-terminal", "$fixture/terminal")
         source = source.replace("/tmp/sts-rgds-preflight-error-$$.sh", "$fixture/notice.sh")
@@ -156,6 +222,15 @@ bash "$NOTICE_SCRIPT"
 
 
 class PreflightIntegrationTests(unittest.TestCase):
+    def test_launch_and_preflight_use_same_offline_images(self):
+        launcher = generated_launcher().decode("utf-8")
+        self.assertIn('"$APP_DIR/runtime/offline/$JAVA_RUNTIME.squashfs"', launcher)
+        self.assertIn('"$APP_DIR/runtime/offline/$WESTON_RUNTIME.squashfs"', launcher)
+        self.assertNotIn("ROCreader_RGDSPlus", launcher)
+        self.assertNotIn("harbourmaster", launcher)
+        self.assertIn('mount -o ro "$JAVA_SQUASHFS"', launcher)
+        self.assertIn('mount -o ro "$WESTON_SQUASHFS"', launcher)
+
     def test_check_precedes_hash_cache_validation_and_extraction(self):
         launcher = generated_launcher().decode("utf-8")
         at = launcher.index("if runtime_preflight; then")

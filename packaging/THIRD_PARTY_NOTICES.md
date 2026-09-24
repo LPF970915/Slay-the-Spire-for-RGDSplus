@@ -11,3 +11,9 @@ included.
 
 This notice is not a substitute for reviewing the license text shipped with
 the exact upstream files before redistribution.
+
+From adapter build 20260924-02, unmodified ARM64 Java 17 and Weston runtime
+images are included for offline use. Their provenance, licenses and firmware
+baseline are described in `OFFLINE_RUNTIMES.md` and
+`offline-runtime-manifest.json` beside this notice. Existing notices inside
+the images are retained; the adapter license does not apply to those works.

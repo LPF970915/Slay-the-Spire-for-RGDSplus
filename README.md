@@ -38,6 +38,7 @@ Ports/
   Slay the Spire for RGDSplus/
     game-launch.sh
     desktop-1.0.jar        <- 用户自行提供，发布包不包含
+    runtime/offline/       <- 包内 Java 17 和 Weston，无需联网下载
     cache/
     saves/
     logs/
@@ -47,11 +48,16 @@ Ports/
 阶段、计数和心跳信息；请勿断电或拔卡。原始正版文件不会被覆盖，失败时可
 删除未完成的 `cache/` 后重试。后续启动会复用已完成缓存。
 
-`20260924-01` 起会在释放资源前检查运行依赖。PortMaster 的 `libs/` 中需安装
-`zulu17.54.21-ca-jre17.0.13-linux.squashfs` 和 `weston_pkg_0.2.squashfs`。
-这两个镜像不随适配包附带。缺少 Java 的设备即使资源解压完成也不能启动；
-补齐运行镜像即可重试，不需要删除正版文件、缓存或存档。
+`20260924-02` 起内置 ARM64 Java 17 和 Weston 离线镜像，安装方法与视频一致：
+复制整个 `Ports` 到卡根目录，再放入正版 JAR；不需要打开 PortMaster 下载依赖。
+启动器优先使用游戏目录内的镜像，不修改共享 PortMaster，不依赖其他移植游戏。
+包内同时附带所需的 ARM64 `libjpeg.so.8` 和 `libXtst.so.6`，
+不再借用阅读器或其他游戏的库。
+启动前显示离线运行库检查提示，校验文件完整性并实际测试 Java。
+从旧版升级时完整覆盖适配文件即可，不需要删除正版文件、缓存或存档。
 预检失败时会记录 `logs/*.preflight.txt`，显示服务可用时会留屏提示约 45 秒。
+仍需使用兼容的 RGDSplus ARM64 固件及其自带的 PortMaster、Python 3、
+Wayland 和系统音频库；离线包不替换固件及显卡驱动。
 
 ## 当前适配
 
@@ -79,6 +85,8 @@ Ports/
 $env:STS_GAME_JAR = "D:\path\to\desktop-1.0.jar"
 $env:JAVA_HOME = "C:\Program Files\Java\jdk-25"
 py -3 prototype/r3/build.py
+py -3 -m pip install zstandard
+py -3 tools/fetch_offline_runtimes.py
 py -3 tools/assemble_r4_adapter_package.py
 py -3 tools/test_touch_contract.py
 py -3 -m unittest discover -s prototype/p1 -v

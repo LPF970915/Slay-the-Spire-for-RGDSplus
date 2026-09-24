@@ -16,6 +16,15 @@ The exact source mapping and hashes are recorded in `upstream-manifest.json`.
 The upstream snapshot is a local build input and is intentionally not uploaded
 as a second copy of the upstream repository.
 
+## Offline runtimes
+
+Build `20260924-02` additionally distributes unmodified ARM64 Java 17 and
+Weston runtime images from a fixed PortMaster revision. See
+[offline runtime notices](packaging/OFFLINE_RUNTIMES.md) and the generated
+package's `NOTICES/offline-runtime-manifest.json` for provenance and hashes.
+The third-party images keep their original notices and licenses and are not
+covered by the original adapter's license or commercial-use restrictions.
+
 ## User-supplied game
 
 The user supplies a legally obtained `desktop-1.0.jar`. It is never included

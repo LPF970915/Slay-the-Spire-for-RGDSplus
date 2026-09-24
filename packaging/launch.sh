@@ -73,6 +73,10 @@ if [ -n "$CONTROLFOLDER" ] && [ -f "$CONTROLFOLDER/control.txt" ]; then
     fi
 fi
 
+if [ "$(id -u)" = 0 ]; then
+    ESUDO=""
+fi
+
 if [ ! -f "$APP_DIR/desktop-1.0.jar" ]; then
     echo "[launcher] missing user file: $APP_DIR/desktop-1.0.jar"
     if type pm_message >/dev/null 2>&1; then
@@ -110,7 +114,7 @@ while :; do
     files=$(find "$CACHE" -maxdepth 1 -type f -name '*.tex' 2>/dev/null | wc -l)
     bytes=$(du -sk "$CACHE" 2>/dev/null | awk '{print $1 + 0}')
     [ -n "$bytes" ] || bytes=0
-    current=$(grep -E '\[release\]|\[TexCompress\]|\[rgds-sdl\]|\[rgds-r3\]' "$LOG" 2>/dev/null | tail -n 1)
+    current=$(grep -E '\[preflight\]|\[release\]|\[TexCompress\]|\[rgds-sdl\]|\[rgds-r3\]' "$LOG" 2>/dev/null | tail -n 1)
     [ -n "$current" ] || current='等待游戏运行时开始处理纹理'
     signature="$files:$bytes:$current"
     if [ "$signature" = "$last_signature" ]; then
@@ -120,6 +124,7 @@ while :; do
         last_signature=$signature
     fi
     case "$current" in
+        *'[preflight]'*) phase='正在校验离线运行库，无需联网' ;;
         *'phase=extract-assets'*) phase='阶段 1/4：释放字体、图片和音频' ;;
         *'phase=compress-audio'*|*'[release] audio '*) phase='阶段 2/4：压缩音频' ;;
         *'phase=clean-source'*) phase='阶段 3/4：清理原始资源' ;;
@@ -193,13 +198,15 @@ if [ ! -r "$APP_DIR/runtime_preflight.sh" ]; then
     exit 3
 fi
 source "$APP_DIR/runtime_preflight.sh"
+start_resource_notice
 if runtime_preflight; then
-    :
+    stop_resource_notice
 else
     PREFLIGHT_RC=$?
     if [ "$PREFLIGHT_RC" -ne 3 ]; then
         preflight_error "运行时检查异常中断，退出码 $PREFLIGHT_RC。请检查本次启动日志。" || true
     fi
+    stop_resource_notice
     show_preflight_failure
     exit 3
 fi
@@ -280,6 +287,7 @@ JAVA_RUNTIME="zulu17.54.21-ca-jre17.0.13-linux"
 JAVA_SQUASHFS=""
 if [ -z "$JAVA_HOME" ]; then
     for candidate in \
+        "$APP_DIR/runtime/offline/$JAVA_RUNTIME.squashfs" \
         "$APP_DIR/runtime/java" \
         "${CONTROLFOLDER:+$CONTROLFOLDER/libs/$JAVA_RUNTIME}" \
         "${CONTROLFOLDER:+$CONTROLFOLDER/libs/$JAVA_RUNTIME.squashfs}"; do
@@ -308,6 +316,7 @@ MENU_WATCHDOG=""
 INPUT_PID=""
 EXIT_GUARD_PID=""
 WESTON_COMMAND=""
+OFFLINE_LIBS_LINK=""
 
 resume_menu() {
     local index pid birth
@@ -362,7 +371,7 @@ if [ -z "$JAVA_HOME" ] && [ -n "$JAVA_SQUASHFS" ]; then
             }
         fi
         MOUNT_CMD="${ESUDO:-}"
-        $MOUNT_CMD mount "$JAVA_SQUASHFS" "$JAVA_HOME" || {
+        $MOUNT_CMD mount -o ro "$JAVA_SQUASHFS" "$JAVA_HOME" || {
             echo "[launcher] failed to mount Java runtime"
             exit 3
         }
@@ -381,6 +390,9 @@ cleanup() {
     stop_resource_notice
     if [ -n "${WESTON_COMMAND:-}" ]; then
         rm -f "$WESTON_COMMAND"
+    fi
+    if [ -n "${OFFLINE_LIBS_LINK:-}" ] && [ -L "$OFFLINE_LIBS_LINK" ]; then
+        rm -f "$OFFLINE_LIBS_LINK"
     fi
     if [ -n "$MENU_WATCHDOG" ]; then
         kill "$MENU_WATCHDOG" 2>/dev/null || true
@@ -411,7 +423,7 @@ fi
 
 export JAVA_HOME
 export PATH="$JAVA_HOME/bin:$PATH"
-export LD_LIBRARY_PATH="$APP_DIR:$JAVA_HOME/lib:$JAVA_HOME/lib/server:/mnt/ports/PortMaster/libs:/mnt/mmc/Roms/APPS/ROCreader_RGDSPlus/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}:/usr/lib:/lib"
+export LD_LIBRARY_PATH="$APP_DIR:$JAVA_HOME/lib:$JAVA_HOME/lib/server${CONTROLFOLDER:+:$CONTROLFOLDER/libs}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}:/usr/lib:/lib"
 export WRAPPED_LIBRARY_PATH="$APP_DIR"
 export WRAPPED_PRELOAD="$APP_DIR/librgds-sdl.so:$APP_DIR/libwrap.so"
 export LIBGL_ES="${LIBGL_ES:-3}"
@@ -479,6 +491,7 @@ run_game() {
         WESTON_RUNTIME="weston_pkg_0.2"
         WESTON_SQUASHFS=""
         for candidate in \
+            "$APP_DIR/runtime/offline/$WESTON_RUNTIME.squashfs" \
             "${CONTROLFOLDER:+$CONTROLFOLDER/libs/$WESTON_RUNTIME}" \
             "${CONTROLFOLDER:+$CONTROLFOLDER/libs/$WESTON_RUNTIME.squashfs}"; do
             if [ -x "$candidate/westonwrap.sh" ]; then
@@ -491,7 +504,7 @@ run_game() {
         done
         if [ -n "$WESTON_SQUASHFS" ] && [ ! -x "$WESTON_DIR/westonwrap.sh" ]; then
             mkdir -p "$WESTON_DIR"
-            ${ESUDO:-} mount "$WESTON_SQUASHFS" "$WESTON_DIR" || {
+            ${ESUDO:-} mount -o ro "$WESTON_SQUASHFS" "$WESTON_DIR" || {
                 echo "[launcher] failed to mount Weston diagnostic runtime"
                 return 3
             }
@@ -500,6 +513,16 @@ run_game() {
         if [ ! -x "$WESTON_DIR/westonwrap.sh" ]; then
             echo "[launcher] Weston diagnostic runtime not found"
             return 3
+        fi
+        if [ -d "$APP_DIR/runtime/offline/libs" ]; then
+            # Weston evals library variables without quotes; keep its input
+            # spaceless while storing the real binaries in the game folder.
+            OFFLINE_LIBS_LINK="/tmp/sts-rgds-libs-$$"
+            if [ -e "$OFFLINE_LIBS_LINK" ] || [ -L "$OFFLINE_LIBS_LINK" ]; then
+                echo "[launcher] refusing existing offline library link"
+                return 3
+            fi
+            ln -s "$APP_DIR/runtime/offline/libs" "$OFFLINE_LIBS_LINK" || return 3
         fi
         # westonwrap evals its command and library paths without quotes.
         # Hand it one spaceless script, whose own quoting preserves the
@@ -537,6 +560,10 @@ run_game() {
             cd /tmp || exit 1
             unset WRAPPED_LIBRARY_PATH
             unset WRAPPED_PRELOAD
+            if [ -n "$OFFLINE_LIBS_LINK" ]; then
+                export WRAPPED_LIBRARY_PATH="$OFFLINE_LIBS_LINK"
+                export LD_LIBRARY_PATH="$OFFLINE_LIBS_LINK:$LD_LIBRARY_PATH"
+            fi
             if [ "$LAUNCH_MODE" = "nested-wayland" ]; then
                 exec "$WESTON_DIR/westonwrap.sh" wayland gl kiosk crusty_glx_gl4es "$WESTON_COMMAND"
             else
@@ -572,7 +599,7 @@ if [ "$LAUNCH_MODE" = "nested-wayland" ]; then
     ln -s "$PARENT_WAYLAND_SOCKET" \
         "$WESTON_BRIDGE_DIR/$PARENT_WAYLAND_DISPLAY"
     WESTON_BRIDGE_READY=1
-    export WRAPPED_LIBRARY_PATH="$APP_DIR:$JAVA_HOME/lib:$JAVA_HOME/lib/server:/mnt/ports/PortMaster/libs:/mnt/mmc/Roms/APPS/ROCreader_RGDSPlus/lib:/usr/lib:/lib"
+    export WRAPPED_LIBRARY_PATH="$APP_DIR:$JAVA_HOME/lib:$JAVA_HOME/lib/server${CONTROLFOLDER:+:$CONTROLFOLDER/libs}:/usr/lib:/lib"
 fi
 
 pause_menu

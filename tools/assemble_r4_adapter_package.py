@@ -14,13 +14,17 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from prototype.r3.launch_profile import configure
+from fetch_offline_runtimes import (
+    DESTINATION as RUNTIME_SOURCE, RUNTIMES, LIBRARIES,
+    library_payload, validate as validate_runtime,
+)
 
 
 UPSTREAM = ROOT / "upstream" / "slaythespire"
 HERE = ROOT / "prototype" / "r3"
 PREFIX = "Ports/Slay the Spire for RGDSplus/"
 ENTRY = "Ports/Slay the Spire for RGDSplus.sh"
-BUILD = "slay-the-spire-for-rgdsplus-adapter-20260924-01"
+BUILD = "slay-the-spire-for-rgdsplus-adapter-20260924-02"
 OUTPUT = ROOT / "dist" / "Slay the Spire for RGDSplus.zip"
 
 ADAPTER_SOURCES = {
@@ -138,9 +142,11 @@ def generated_manifest(files: dict[str, str]) -> bytes:
         "runtime_requirements": [
             "PortMaster gptokeyb and control.txt",
             "Python 3 with evdev-compatible gt9xx-0 access",
-            "weston_pkg_0.2.squashfs",
-            "zulu17.54.21-ca-jre17.0.13-linux.squashfs",
+            "RGDSplus ARM64 Linux/Wayland firmware with system OpenAL",
         ],
+        "offline_runtimes": list(RUNTIMES),
+        "offline_libraries": list(LIBRARIES),
+        "runtime_network_required": False,
         "files": files,
     }
     return (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode()
@@ -174,6 +180,10 @@ def verify_archive(path: Path) -> dict:
         )
         for name, expected_hash in manifest["files"].items():
             assert sha256_bytes(archive.read(name)) == expected_hash, name
+        for name, (_, blob, size) in RUNTIMES.items():
+            validate_runtime(archive.read(PREFIX + "runtime/offline/" + name), blob, size)
+        for name in LIBRARIES:
+            assert archive.read(PREFIX + "runtime/offline/libs/" + name) == library_payload(name)[0]
         assert archive.read(ENTRY) == entry_bytes()
         assert archive.read(PREFIX + "game-launch.sh") == generated_game_launcher()
         checksums = archive.read("CHECKSUMS.sha256").decode("ascii")
@@ -205,6 +215,32 @@ def build(output: Path = OUTPUT) -> Path:
             relative = source.relative_to(tools).as_posix()
             files[PREFIX + "tools/" + relative] = source.read_bytes()
     files[PREFIX + "game-launch.sh"] = generated_game_launcher()
+    runtime_hashes = {}
+    for name, (_, blob, size) in RUNTIMES.items():
+        source = RUNTIME_SOURCE / name
+        if not source.is_file():
+            raise FileNotFoundError(f"{source}; run tools/fetch_offline_runtimes.py first")
+        data = source.read_bytes()
+        validate_runtime(data, blob, size)
+        files[PREFIX + "runtime/offline/" + name] = data
+        runtime_hashes[name] = sha256_bytes(data)
+    for name in LIBRARIES:
+        data, notice = library_payload(name)
+        files[PREFIX + "runtime/offline/libs/" + name] = data
+        runtime_hashes["libs/" + name] = sha256_bytes(data)
+        files[PREFIX + "NOTICES/" + name + "-copyright.txt"] = notice
+    files[PREFIX + "runtime/offline/SHA256SUMS"] = "".join(
+        f"{digest}  {name}\n" for name, digest in runtime_hashes.items()
+    ).encode("ascii")
+    files[PREFIX + "NOTICES/offline-runtime-manifest.json"] = (
+        RUNTIME_SOURCE / "manifest.json"
+    ).read_bytes()
+    files[PREFIX + "NOTICES/OFFLINE_RUNTIMES.md"] = (
+        ROOT / "packaging/OFFLINE_RUNTIMES.md"
+    ).read_bytes()
+    files[PREFIX + "NOTICES/Westonpack-LICENSE.txt"] = (
+        ROOT / "packaging/Westonpack-LICENSE.txt"
+    ).read_bytes()
     files[PREFIX + "build-manifest.json"] = b""
     files[PREFIX + "NOTICES/PortMaster-SlayTheSpire-README.md"] = (
         ROOT / "upstream" / "README.md"
